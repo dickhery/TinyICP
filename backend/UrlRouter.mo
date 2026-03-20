@@ -1,3 +1,4 @@
+import Array "mo:core@1/Array";
 import Blob "mo:core@1/Blob";
 import Route "mo:liminal/Route";
 import Nat "mo:core@1/Nat";
@@ -19,7 +20,7 @@ module {
   ) = self {
 
     public func getAllUrls(routeContext : RouteContext.RouteContext) : Route.HttpResponse {
-      let urls = store.getAllUrls() |> Iter.map(_, store.toView) |> Iter.toArray(_);
+      let urls = Array.map<UrlStore.Url, UrlStore.UrlView>(store.getAllUrls(), store.toView);
       routeContext.buildResponse(#ok, #content(toCandid(to_candid (urls))));
     };
 
