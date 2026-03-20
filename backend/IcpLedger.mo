@@ -1,13 +1,13 @@
 import Array "mo:core@1/Array";
 import Blob "mo:core@1/Blob";
-import Iter "mo:core@1/Iter";
+import Char "mo:core@1/Char";
 import Nat "mo:core@1/Nat";
 import Nat8 "mo:core@1/Nat8";
 import Nat64 "mo:core@1/Nat64";
 import Principal "mo:core@1/Principal";
 import Result "mo:core@1/Result";
-import Char "mo:core@1/Char";
 import Text "mo:core@1/Text";
+import VarArray "mo:core@1/VarArray";
 
 module {
   public let ledger : Ledger = actor ("ryjl3-tyaaa-aaaaa-aaaba-cai");
@@ -47,15 +47,17 @@ module {
   };
 
   public func subaccountForPrincipal(user : Principal) : Blob {
-    let bytes = Blob.toArray(Principal.toBlob(user));
-    let output = Array.tabulateVar<Nat8>(32, func _ = 0);
-    output[0] := Nat8.fromNat(bytes.size());
-    for (i in bytes.keys()) {
+    let principalBytes = Blob.toArray(Principal.toBlob(user));
+    let output = VarArray.tabulate<Nat8>(32, func _ = 0);
+    output[0] := Nat8.fromNat(principalBytes.size());
+
+    for (i in principalBytes.keys()) {
       if (i + 1 < 32) {
-        output[i + 1] := bytes[i];
+        output[i + 1] := principalBytes[i];
       };
     };
-    Blob.fromArrayMut(output);
+
+    Blob.fromVarArray(output);
   };
 
   public func accountIdForUser(canisterPrincipal : Principal, user : Principal) : Blob {
@@ -67,10 +69,8 @@ module {
   };
 
   public func toHex(blob : Blob) : Text {
-    Blob.toArray(blob)
-    |> Iter.map<Nat8, Text>(_, byteToHex)
-    |> Iter.toArray(_)
-    |> Text.join("", _);
+    let parts = Array.map<Nat8, Text>(Blob.toArray(blob), byteToHex);
+    Text.join("", parts.values());
   };
 
   public func fromHex(text : Text) : Result.Result<Blob, Text> {
@@ -78,8 +78,8 @@ module {
       return #err("Account identifiers must be 64 hexadecimal characters.");
     };
 
-    let chars = text.chars() |> Iter.toArray(_);
-    let bytes = Array.tabulateVar<Nat8>(32, func _ = 0);
+    let chars = Text.toVarArray(text);
+    let bytes = VarArray.tabulate<Nat8>(32, func _ = 0);
     var i = 0;
     var j = 0;
 
@@ -91,7 +91,7 @@ module {
       j += 1;
     };
 
-    #ok(Blob.fromArrayMut(bytes));
+    #ok(Blob.fromVarArray(bytes));
   };
 
   public func destinationToAccountIdentifier(destination : Text) : Result.Result<Blob, Text> {
@@ -99,12 +99,12 @@ module {
       return fromHex(destination);
     };
 
-    try {
-      let principal = Principal.fromText(destination);
-      #ok(Principal.toLedgerAccount(principal, null));
-    } catch (_) {
-      #err("Destination must be either a principal ID or a 64-character account identifier.");
+    if (not looksLikePrincipalText(destination)) {
+      return #err("Destination must be either a principal ID or a 64-character account identifier.");
     };
+
+    let principal = Principal.fromText(destination);
+    #ok(Principal.toLedgerAccount(principal, null));
   };
 
   public func transferFromSubaccount(args : {
@@ -155,6 +155,21 @@ module {
         "Duplicate transfer detected at block " # Nat.toText(Nat64.toNat(duplicate_of)) # ".";
       };
     };
+  };
+
+  func looksLikePrincipalText(text : Text) : Bool {
+    if (text.size() < 5) {
+      return false;
+    };
+
+    for (char in text.chars()) {
+      let isAllowed = Char.isAlphabetic(char) or Char.isDigit(char) or char == '-';
+      if (not isAllowed) {
+        return false;
+      };
+    };
+
+    true;
   };
 
   func byteToHex(byte : Nat8) : Text {
