@@ -23,6 +23,7 @@ module {
     clicks : Nat;
     createdAt : Int;
     owner : Principal;
+    paid : Bool;
   };
 
   public type UrlView = {
@@ -54,8 +55,11 @@ module {
       BTree.entries(stableData.urls)
       |> Iter.map(
         _,
-        func((_, url) : (Nat, Url)) : Url = url,
+        func((_, url) : (Nat, Url)) : ?Url {
+          if (url.paid) ?url else null;
+        },
       )
+      |> Iter.filterMap(_, func(url : ?Url) : ?Url = url)
       |> Iter.toArray(_);
     };
 
@@ -64,7 +68,7 @@ module {
       |> Iter.map(
         _,
         func((_, url) : (Nat, Url)) : ?UrlView {
-          if (Principal.equal(url.owner, owner)) {
+          if (Principal.equal(url.owner, owner) and url.paid) {
             ?toView(url);
           } else {
             null;
@@ -77,7 +81,10 @@ module {
 
     public func getUrlByShortCode(shortCode : Text) : ?Url {
       let ?id = Map.get(slugToIdMap, Text.compare, shortCode) else return null;
-      BTree.get(stableData.urls, Nat.compare, id);
+      switch (BTree.get(stableData.urls, Nat.compare, id)) {
+        case (?url and url.paid) ?url;
+        case _ null;
+      };
     };
 
     public func incrementClicks(shortCode : Text) : ?Text {
@@ -94,7 +101,7 @@ module {
       ?url.originalUrl;
     };
 
-    public func create(request : CreateRequest, owner : Principal) : Result.Result<Url, Text> {
+    public func createPending(request : CreateRequest, owner : Principal) : Result.Result<Url, Text> {
       if (not isValidUrl(request.originalUrl)) {
         return #err("Invalid URL format: " # request.originalUrl);
       };
@@ -121,6 +128,7 @@ module {
         clicks = 0;
         createdAt = Time.now();
         owner = owner;
+        paid = false;
       };
 
       nextId += 1;
@@ -128,6 +136,34 @@ module {
       Map.add(slugToIdMap, Text.compare, shortCode, newUrl.id);
 
       #ok(newUrl);
+    };
+
+    public func markPaid(id : Nat, caller : Principal) : Result.Result<Url, Text> {
+      let ?url = BTree.get(stableData.urls, Nat.compare, id) else return #err("URL not found");
+
+      if (not Principal.equal(url.owner, caller)) {
+        return #err("You can only activate URLs you created");
+      };
+
+      let updatedUrl : Url = { url with paid = true };
+      ignore BTree.insert(stableData.urls, Nat.compare, id, updatedUrl);
+      #ok(updatedUrl);
+    };
+
+    public func deletePending(id : Nat, caller : Principal) : Result.Result<(), Text> {
+      let ?url = BTree.get(stableData.urls, Nat.compare, id) else return #err("URL not found");
+
+      if (not Principal.equal(url.owner, caller)) {
+        return #err("You can only delete URLs you created");
+      };
+
+      if (url.paid) {
+        return #err("Only unpaid URLs can be rolled back");
+      };
+
+      ignore BTree.delete(stableData.urls, Nat.compare, id);
+      ignore Map.delete(slugToIdMap, Text.compare, url.shortCode);
+      #ok(());
     };
 
     public func delete(id : Nat, caller : Principal) : Result.Result<(), Text> {
