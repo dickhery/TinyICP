@@ -1,3 +1,4 @@
+import Blob "mo:core@1/Blob";
 import Route "mo:liminal/Route";
 import Nat "mo:core@1/Nat";
 import Debug "mo:core@1/Debug";
@@ -6,10 +7,10 @@ import Serializer "Serializer";
 import Serde "mo:serde";
 import RouteContext "mo:liminal/RouteContext";
 import Text "mo:core@1/Text";
-import Result "mo:core@1/Result";
 import Iter "mo:core@1/Iter";
 import UrlKit "mo:url-kit@3";
 import Runtime "mo:core@1/Runtime";
+import Principal "mo:core@1/Principal";
 
 module {
 
@@ -18,7 +19,7 @@ module {
   ) = self {
 
     public func getAllUrls(routeContext : RouteContext.RouteContext) : Route.HttpResponse {
-      let urls = store.getAllUrls();
+      let urls = store.getAllUrls() |> Iter.map(_, store.toView) |> Iter.toArray(_);
       routeContext.buildResponse(#ok, #content(toCandid(to_candid (urls))));
     };
 
@@ -31,7 +32,7 @@ module {
         };
         case (?originalUrl) {
           routeContext.buildResponse(
-            #found, // 302 redirect
+            #found,
             #custom({
               body = Text.encodeUtf8("Redirecting to " # originalUrl);
               headers = [
@@ -52,29 +53,24 @@ module {
           routeContext.buildResponse(#notFound, #error(#message("Short URL not found")));
         };
         case (?url) {
-          routeContext.buildResponse(#ok, #content(toCandid(to_candid (url))));
+          routeContext.buildResponse(#ok, #content(toCandid(to_candid (store.toView(url)))));
         };
       };
     };
 
     public func createShortUrl<system>(routeContext : RouteContext.RouteContext) : Route.HttpResponse {
       Debug.print("Creating short URL...");
-
-      // Handle different content types
       let contentType = routeContext.httpContext.getHeader("content-type");
 
       let createRequest : UrlStore.CreateRequest = switch (contentType) {
         case (?"application/x-www-form-urlencoded") {
-          // Parse form data: url=...&slug=...
           parseFormData(routeContext);
         };
         case (?"text/plain") {
-          // Simple text body is just the URL
           let ?body : ?Text = routeContext.parseUtf8Body() else Runtime.trap("Failed to decode request body as UTF-8");
           { originalUrl = body; customSlug = null };
         };
         case _ {
-          // Try JSON
           switch (routeContext.parseJsonBody<UrlStore.CreateRequest>(Serializer.deserializeCreateRequest)) {
             case (#err(e)) return routeContext.buildResponse(#badRequest, #error(#message("Failed to parse request. Error: " # e)));
             case (#ok(req)) req;
@@ -82,12 +78,12 @@ module {
         };
       };
 
-      switch (store.create(createRequest)) {
+      switch (store.create(createRequest, Principal.fromText("2vxsx-fae"))) {
         case (#err(errorMessage)) {
           routeContext.buildResponse(#badRequest, #error(#message(errorMessage)));
         };
         case (#ok(url)) {
-          routeContext.buildResponse(#created, #content(toCandid(to_candid (url))));
+          routeContext.buildResponse(#created, #content(toCandid(to_candid (store.toView(url)))));
         };
       };
     };
@@ -96,20 +92,23 @@ module {
       let idText = routeContext.getRouteParam("id");
       let ?id = Nat.fromText(idText) else return routeContext.buildResponse(#badRequest, #error(#message("Invalid id '" # idText # "', must be a positive integer")));
 
-      if (store.delete(id)) {
-        routeContext.buildResponse(#noContent, #empty);
-      } else {
-        routeContext.buildResponse(#notFound, #error(#message("URL not found")));
+      switch (store.delete(id, Principal.fromText("2vxsx-fae"))) {
+        case (#ok()) routeContext.buildResponse(#noContent, #empty);
+        case (#err(message)) {
+          if (message == "URL not found") {
+            routeContext.buildResponse(#notFound, #error(#message(message)));
+          } else {
+            routeContext.buildResponse(#forbidden, #error(#message(message)));
+          };
+        };
       };
     };
 
-    // Helper function to parse form data
     private func parseFormData(routeContext : RouteContext.RouteContext) : UrlStore.CreateRequest {
       let ?body : ?Text = routeContext.parseUtf8Body() else Runtime.trap("Failed to decode request body as UTF-8");
       var originalUrl = "";
       var customSlug : ?Text = null;
 
-      // Simple form parsing - split by & and then by =
       let pairs = Text.split(body, #char('&'));
       for (pair in pairs) {
         let keyValue = Text.split(pair, #char('='));
@@ -137,9 +136,8 @@ module {
 
     func toCandid(value : Blob) : Serde.Candid.Candid {
       let urlKeys = ["id", "originalUrl", "shortCode", "clicks", "createdAt"];
-      let renamedUrlKeys = [];
       let options : ?Serde.Options = ?{
-        renameKeys = renamedUrlKeys;
+        renameKeys = [];
         blob_contains_only_values = false;
         types = null;
         use_icrc_3_value_type = false;

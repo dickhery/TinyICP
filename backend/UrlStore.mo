@@ -2,12 +2,10 @@ import Array "mo:core@1/Array";
 import Map "mo:core@1/Map";
 import Iter "mo:core@1/Iter";
 import Nat "mo:core@1/Nat";
-import Nat32 "mo:core@1/Nat32";
 import Result "mo:core@1/Result";
 import Text "mo:core@1/Text";
 import Time "mo:core@1/Time";
-import Int "mo:core@1/Int";
-import Random "mo:core@1/Random";
+import Principal "mo:core@1/Principal";
 import Char "mo:core@1/Char";
 import BTree "mo:stableheapbtreemap/BTree";
 import Debug "mo:core@1/Debug";
@@ -24,19 +22,20 @@ module {
     shortCode : Text;
     clicks : Nat;
     createdAt : Int;
+    owner : Principal;
   };
 
-  public type CreateRequest = {
-    originalUrl : Text;
-    customSlug : ?Text;
-  };
-
-  public type UrlStats = {
+  public type UrlView = {
     id : Nat;
     originalUrl : Text;
     shortCode : Text;
     clicks : Nat;
     createdAt : Int;
+  };
+
+  public type CreateRequest = {
+    originalUrl : Text;
+    customSlug : ?Text;
   };
 
   public class Store(stableData : StableData) = self {
@@ -60,6 +59,22 @@ module {
       |> Iter.toArray(_);
     };
 
+    public func getUrlsByOwner(owner : Principal) : [UrlView] {
+      BTree.entries(stableData.urls)
+      |> Iter.map(
+        _,
+        func((_, url) : (Nat, Url)) : ?UrlView {
+          if (Principal.equal(url.owner, owner)) {
+            ?toView(url);
+          } else {
+            null;
+          };
+        },
+      )
+      |> Iter.filterMap(_, func(url : ?UrlView) : ?UrlView = url)
+      |> Iter.toArray(_);
+    };
+
     public func getUrlByShortCode(shortCode : Text) : ?Url {
       let ?id = Map.get(slugToIdMap, Text.compare, shortCode) else return null;
       BTree.get(stableData.urls, Nat.compare, id);
@@ -79,13 +94,11 @@ module {
       ?url.originalUrl;
     };
 
-    public func create(request : CreateRequest) : Result.Result<Url, Text> {
-      // Validate original URL
+    public func create(request : CreateRequest, owner : Principal) : Result.Result<Url, Text> {
       if (not isValidUrl(request.originalUrl)) {
         return #err("Invalid URL format: " # request.originalUrl);
       };
 
-      // Generate or validate short code
       let shortCode = switch (request.customSlug) {
         case (?slug) {
           if (not isValidSlug(slug)) {
@@ -107,6 +120,7 @@ module {
         shortCode = shortCode;
         clicks = 0;
         createdAt = Time.now();
+        owner = owner;
       };
 
       nextId += 1;
@@ -116,10 +130,26 @@ module {
       #ok(newUrl);
     };
 
-    public func delete(id : Nat) : Bool {
-      let ?url = BTree.delete(stableData.urls, Nat.compare, id) else return false;
+    public func delete(id : Nat, caller : Principal) : Result.Result<(), Text> {
+      let ?url = BTree.get(stableData.urls, Nat.compare, id) else return #err("URL not found");
+
+      if (not Principal.equal(url.owner, caller)) {
+        return #err("You can only delete URLs you created");
+      };
+
+      ignore BTree.delete(stableData.urls, Nat.compare, id);
       ignore Map.delete(slugToIdMap, Text.compare, url.shortCode);
-      true;
+      #ok(());
+    };
+
+    public func toView(url : Url) : UrlView {
+      {
+        id = url.id;
+        originalUrl = url.originalUrl;
+        shortCode = url.shortCode;
+        clicks = url.clicks;
+        createdAt = url.createdAt;
+      };
     };
 
     public func toStableData() : StableData {
@@ -129,10 +159,7 @@ module {
       };
     };
 
-    // Private helper functions
-
     private func isValidUrl(url : Text) : Bool {
-      // Basic URL validation - must start with http:// or https://
       Text.startsWith(url, #text("http://")) or Text.startsWith(url, #text("https://"));
     };
 
@@ -151,9 +178,6 @@ module {
       let charsArray = chars.chars() |> Iter.toArray(_);
       let length = 6;
       var code = "";
-
-      // Simple deterministic generation based on nextId for now
-      // In production, you'd want a proper random generator
       let base = nextId;
       var num = base;
 
@@ -163,9 +187,8 @@ module {
         num := num / charsArray.size() + 1;
       };
 
-      // Ensure uniqueness
       if (Map.get(slugToIdMap, Text.compare, code) != null) {
-        code # Nat.toText(nextId); // Add ID as suffix if collision
+        code # Nat.toText(nextId);
       } else {
         code;
       };

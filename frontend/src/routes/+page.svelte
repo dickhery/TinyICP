@@ -3,16 +3,25 @@
     import { onMount } from "svelte";
     import UrlApi from "$lib/urlApi.js";
     import { canisterId } from "$lib/canisters.js";
+    import {
+        getPrincipalText,
+        isAuthenticated,
+        login,
+        logout
+    } from "$lib/auth.js";
+    import { resetBackendActor } from "$lib/backendActor.js";
 
     let urls = [];
     let loading = false;
+    let authLoading = true;
+    let authenticated = false;
+    let principal = "";
     let error = "";
     let successMessage = "";
     let newUrl = "";
     let customSlug = "";
     let copiedShortUrl = "";
 
-    // Get the base URL for curl examples
     function getBaseUrl(raw = true) {
         const canisterIdAndRaw = raw ? `${canisterId}.raw` : canisterId;
 
@@ -34,9 +43,6 @@
         return `https://${canisterIdAndRaw}.icp0.io`;
     }
 
-    // Get the base URL for dynamic usage;
-
-    // Generate dynamic curl command based on current input
     $: curlCommand = (() => {
         const baseUrl = getBaseUrl();
 
@@ -52,15 +58,43 @@
   -H 'Accept: */*' \\
   -H 'Content-Type: application/x-www-form-urlencoded' \\
   -d 'url=${encodeURIComponent(newUrl)}&slug=${encodeURIComponent(customSlug)}'`;
-        } else {
-            return `curl '${baseUrl}/shorten' \\
+        }
+
+        return `curl '${baseUrl}/shorten' \\
   -H 'Accept: */*' \\
   -H 'Content-Type: text/plain' \\
   -d '${newUrl}'`;
-        }
     })();
 
+    async function syncAuthState() {
+        authLoading = true;
+        error = "";
+
+        try {
+            authenticated = await isAuthenticated();
+            resetBackendActor();
+            principal = authenticated ? await getPrincipalText() : "";
+
+            if (authenticated) {
+                await loadUrls();
+            } else {
+                urls = [];
+            }
+        } catch (err) {
+            authenticated = false;
+            principal = "";
+            error = "Failed to initialize authentication: " + err.message;
+        } finally {
+            authLoading = false;
+        }
+    }
+
     async function loadUrls() {
+        if (!authenticated) {
+            urls = [];
+            return;
+        }
+
         loading = true;
         error = "";
         try {
@@ -73,13 +107,41 @@
         }
     }
 
+    async function handleLogin() {
+        authLoading = true;
+        error = "";
+        try {
+            await login();
+            showSuccess("Authenticated successfully. Loading your Tiny URLs...");
+            await syncAuthState();
+        } catch (err) {
+            error = "Internet Identity sign in failed: " + err.message;
+            authLoading = false;
+        }
+    }
+
+    async function handleLogout() {
+        authLoading = true;
+        try {
+            await logout();
+            resetBackendActor();
+            authenticated = false;
+            principal = "";
+            urls = [];
+            showSuccess("Signed out successfully");
+        } catch (err) {
+            error = "Failed to sign out: " + err.message;
+        } finally {
+            authLoading = false;
+        }
+    }
+
     async function shortenUrl() {
         if (!newUrl.trim()) {
             error = "Please enter a URL to shorten";
             return;
         }
 
-        // Basic URL validation
         try {
             new URL(newUrl);
         } catch {
@@ -94,11 +156,10 @@
                 newUrl,
                 customSlug || null
             );
-            urls = [shortenedUrl, ...urls]; // Add to beginning of list
+            urls = [shortenedUrl, ...urls];
             newUrl = "";
             customSlug = "";
 
-            // Show success message
             const shortCode = shortenedUrl.shortCode;
             const fullShortUrl = UrlApi.getShortUrl(shortCode);
             showSuccess(`[>] Short URL created: ${fullShortUrl}`);
@@ -139,8 +200,6 @@
             .then(() => {
                 copiedShortUrl = text;
                 showSuccess(`[C] Copied to clipboard: ${text}`);
-
-                // Clear the copied state after 2 seconds
                 setTimeout(() => {
                     copiedShortUrl = "";
                 }, 2000);
@@ -155,14 +214,12 @@
     }
 
     function handleKeydown(event) {
-        // ESC key to clear form
         if (event.key === "Escape") {
             newUrl = "";
             customSlug = "";
             clearError();
         }
-        // Ctrl+R or Cmd+R to refresh
-        if ((event.ctrlKey || event.metaKey) && event.key === "r") {
+        if (authenticated && (event.ctrlKey || event.metaKey) && event.key === "r") {
             event.preventDefault();
             loadUrls();
         }
@@ -184,7 +241,6 @@
     }
 
     function formatDate(timestamp) {
-        // Convert nanoseconds to milliseconds for JavaScript Date
         const milliseconds = Math.floor(timestamp / 1000000);
         return new Date(milliseconds).toLocaleString();
     }
@@ -199,7 +255,7 @@
     }
 
     onMount(() => {
-        loadUrls();
+        syncAuthState();
         document.addEventListener("keydown", handleKeydown);
 
         return () => {
@@ -210,7 +266,7 @@
 
 <main>
     <div class="header">
-        <h1>Liminal URL Shortener</h1>
+        <h1>Tiny ICP</h1>
         <p>
             Shorten URLs with HTTP-native features using <a
                 href="https://mops.one/liminal"
@@ -237,170 +293,199 @@
         </div>
     {/if}
 
-    <!-- Shorten URL Form -->
-    <div class="shorten-section">
-        <form on:submit|preventDefault={shortenUrl} class="shorten-form">
-            <div class="form-field">
-                <label for="new-url" class="form-label">Long URL</label>
-                <input
-                    id="new-url"
-                    type="url"
-                    bind:value={newUrl}
-                    placeholder="https://example.com/very/long/url..."
-                    disabled={loading}
-                    required
-                    class="form-input url-input"
-                />
+    {#if authLoading && !authenticated}
+        <section class="auth-shell">
+            <div class="auth-card">
+                <h2>Authenticating...</h2>
+                <p>Checking Internet Identity session.</p>
             </div>
-
-            <div class="form-field">
-                <label for="custom-slug" class="form-label"
-                    >Custom Short Code (Optional)</label
-                >
-                <input
-                    id="custom-slug"
-                    type="text"
-                    bind:value={customSlug}
-                    placeholder="my-link"
-                    disabled={loading}
-                    pattern="[a-zA-Z0-9_-]+"
-                    maxlength="20"
-                    class="form-input"
-                />
-                <small class="form-help"
-                    >Letters, numbers, hyphens, and underscores only</small
-                >
-            </div>
-
-            <!-- Action buttons side by side -->
-            <div class="action-row">
+        </section>
+    {:else if !authenticated}
+        <section class="auth-shell">
+            <div class="auth-card">
+                <p class="auth-kicker">Secure personal URL dashboard</p>
+                <h2>Sign in to view your Tiny URLs</h2>
+                <p>
+                    Authenticate with Internet Identity to access only the short
+                    links you created in Tiny ICP.
+                </p>
                 <button
-                    type="submit"
-                    disabled={loading || !newUrl.trim() || !isValidUrl(newUrl)}
-                    class="shorten-btn"
+                    class="shorten-btn auth-btn"
+                    type="button"
+                    on:click={handleLogin}
+                    disabled={authLoading}
                 >
-                    {loading ? "Shortening..." : "[>] Shorten URL"}
+                    {authLoading ? "Connecting..." : "[>] Login with Internet Identity"}
                 </button>
-
-                <div
-                    class="curl-alternative"
-                    class:disabled={!newUrl.trim() || !isValidUrl(newUrl)}
-                >
-                    <p class="curl-label">Or use curl:</p>
-                    <div class="curl-command-container">
-                        <code class="curl-command dynamic">{curlCommand}</code>
-                        <button
-                            type="button"
-                            class="copy-btn"
-                            disabled={!newUrl.trim() || !isValidUrl(newUrl)}
-                            on:click={() => copyToClipboard(curlCommand)}
-                        >
-                            [COPY] Copy curl
-                        </button>
-                    </div>
+                <p class="auth-footnote">
+                    After signing in, this screen disappears and your personal
+                    dashboard loads automatically.
+                </p>
+            </div>
+        </section>
+    {:else}
+        <section class="app-shell">
+            <div class="session-bar">
+                <div>
+                    <strong>Authenticated principal:</strong>
+                    <code>{principal}</code>
                 </div>
+                <button class="refresh-btn" type="button" on:click={handleLogout}
+                    >Sign out</button
+                >
             </div>
-        </form>
-    </div>
 
-    <!-- URLs List -->
-    <div class="urls-section">
-        <div class="section-header">
-            <h2>Your Short URLs ({urls.length})</h2>
-            <button on:click={loadUrls} disabled={loading} class="refresh-btn">
-                {loading ? "[...] Loading..." : "Refresh"}
-            </button>
-        </div>
+            <div class="shorten-section">
+                <form on:submit|preventDefault={shortenUrl} class="shorten-form">
+                    <div class="form-field">
+                        <label for="new-url" class="form-label">Long URL</label>
+                        <input
+                            id="new-url"
+                            type="url"
+                            bind:value={newUrl}
+                            placeholder="https://example.com/very/long/url..."
+                            disabled={loading}
+                            required
+                            class="form-input url-input"
+                        />
+                    </div>
 
-        {#if loading && urls.length === 0}
-            <div class="loading">Loading URLs...</div>
-        {:else if urls.length === 0}
-            <div class="empty-state">
-                <div class="empty-icon">�</div>
-                <p>No short URLs yet. Create your first one above!</p>
-            </div>
-        {:else}
-            <div class="urls-grid">
-                {#each urls as url (url.id)}
-                    <div class="url-card">
-                        <div class="url-info">
-                            <div class="url-header">
-                                <h3 class="short-code">/{url.shortCode}</h3>
-                                <div class="url-actions">
-                                    <button
-                                        class="copy-btn small"
-                                        class:copied={copiedShortUrl ===
-                                            UrlApi.getShortUrl(url.shortCode)}
-                                        on:click={() =>
-                                            copyToClipboard(
-                                                UrlApi.getShortUrl(
-                                                    url.shortCode
-                                                )
-                                            )}
-                                    >
-                                        {copiedShortUrl ===
-                                        UrlApi.getShortUrl(url.shortCode)
-                                            ? "Copied ✓"
-                                            : "Copy Url"}
-                                    </button>
-                                    <button
-                                        class="visit-btn"
-                                        on:click={() =>
-                                            openUrl(
-                                                UrlApi.getShortUrl(
-                                                    url.shortCode
-                                                )
-                                            )}
-                                    >
-                                        ↗
-                                    </button>
-                                    <button
-                                        on:click={() => deleteUrl(url.id)}
-                                        disabled={loading}
-                                        class="delete-btn"
-                                    >
-                                        X
-                                    </button>
-                                </div>
-                            </div>
+                    <div class="form-field">
+                        <label for="custom-slug" class="form-label"
+                            >Custom Short Code (Optional)</label
+                        >
+                        <input
+                            id="custom-slug"
+                            type="text"
+                            bind:value={customSlug}
+                            placeholder="my-link"
+                            disabled={loading}
+                            pattern="[a-zA-Z0-9_-]+"
+                            maxlength="20"
+                            class="form-input"
+                        />
+                        <small class="form-help"
+                            >Letters, numbers, hyphens, and underscores only</small
+                        >
+                    </div>
 
-                            <div class="url-details">
-                                <p class="short-url">
-                                    <strong>Short:</strong>
-                                    <a
-                                        href={UrlApi.getShortUrl(url.shortCode)}
-                                        target="_blank"
-                                        rel="noopener"
-                                    >
-                                        {UrlApi.getShortUrl(url.shortCode)}
-                                    </a>
-                                </p>
-                                <p class="original-url">
-                                    <strong>Original:</strong>
-                                    <a
-                                        href={url.originalUrl}
-                                        target="_blank"
-                                        rel="noopener"
-                                        class="original-link"
-                                    >
-                                        {url.originalUrl}
-                                    </a>
-                                </p>
-                                <div class="url-stats">
-                                    <span class="stat"
-                                        >[HITS] {url.clicks || 0} clicks</span
-                                    >
-                                    <span class="stat"
-                                        >[DATE] {formatDate(
-                                            url.createdAt
-                                        )}</span
-                                    >
-                                </div>
+                    <div class="action-row">
+                        <button
+                            type="submit"
+                            disabled={loading || !newUrl.trim() || !isValidUrl(newUrl)}
+                            class="shorten-btn"
+                        >
+                            {loading ? "Shortening..." : "[>] Shorten URL"}
+                        </button>
+
+                        <div
+                            class="curl-alternative"
+                            class:disabled={!newUrl.trim() || !isValidUrl(newUrl)}
+                        >
+                            <p class="curl-label">Or use curl:</p>
+                            <div class="curl-command-container">
+                                <code class="curl-command dynamic">{curlCommand}</code>
+                                <button
+                                    type="button"
+                                    class="copy-btn"
+                                    disabled={!newUrl.trim() || !isValidUrl(newUrl)}
+                                    on:click={() => copyToClipboard(curlCommand)}
+                                >
+                                    [COPY] Copy curl
+                                </button>
                             </div>
                         </div>
                     </div>
-                {/each}
+                </form>
             </div>
-        {/if}
-    </div>
+
+            <div class="urls-section">
+                <div class="section-header">
+                    <h2>Your Short URLs ({urls.length})</h2>
+                    <button on:click={loadUrls} disabled={loading} class="refresh-btn">
+                        {loading ? "[...] Loading..." : "Refresh"}
+                    </button>
+                </div>
+
+                {#if loading && urls.length === 0}
+                    <div class="loading">Loading URLs...</div>
+                {:else if urls.length === 0}
+                    <div class="empty-state">
+                        <div class="empty-icon">⌁</div>
+                        <p>No short URLs yet. Create your first one above!</p>
+                    </div>
+                {:else}
+                    <div class="urls-grid">
+                        {#each urls as url (url.id)}
+                            <div class="url-card">
+                                <div class="url-info">
+                                    <div class="url-header">
+                                        <h3 class="short-code">/{url.shortCode}</h3>
+                                        <div class="url-actions">
+                                            <button
+                                                class="copy-btn small"
+                                                class:copied={copiedShortUrl ===
+                                                    UrlApi.getShortUrl(url.shortCode)}
+                                                on:click={() =>
+                                                    copyToClipboard(
+                                                        UrlApi.getShortUrl(url.shortCode)
+                                                    )}
+                                            >
+                                                {copiedShortUrl ===
+                                                UrlApi.getShortUrl(url.shortCode)
+                                                    ? "Copied ✓"
+                                                    : "Copy Url"}
+                                            </button>
+                                            <button
+                                                class="visit-btn"
+                                                on:click={() =>
+                                                    openUrl(UrlApi.getShortUrl(url.shortCode))}
+                                            >
+                                                ↗
+                                            </button>
+                                            <button
+                                                on:click={() => deleteUrl(url.id)}
+                                                disabled={loading}
+                                                class="delete-btn"
+                                            >
+                                                X
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="url-details">
+                                        <p class="short-url">
+                                            <strong>Short:</strong>
+                                            <a
+                                                href={UrlApi.getShortUrl(url.shortCode)}
+                                                target="_blank"
+                                                rel="noopener"
+                                            >
+                                                {UrlApi.getShortUrl(url.shortCode)}
+                                            </a>
+                                        </p>
+                                        <p class="original-url">
+                                            <strong>Original:</strong>
+                                            <a
+                                                href={url.originalUrl}
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="original-link"
+                                            >
+                                                {url.originalUrl}
+                                            </a>
+                                        </p>
+                                        <div class="url-stats">
+                                            <span class="stat">[HITS] {url.clicks || 0} clicks</span>
+                                            <span class="stat">[DATE] {formatDate(url.createdAt)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
+        </section>
+    {/if}
 </main>
