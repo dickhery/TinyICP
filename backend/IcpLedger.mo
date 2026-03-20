@@ -11,7 +11,7 @@ import Text "mo:core@1/Text";
 
 module {
   public let ledgerCanisterId = Principal.fromText("ryjl3-tyaaa-aaaaa-aaaba-cai");
-  public let ledger : Ledger = actor (Principal.toText(ledgerCanisterId));
+  public let ledger : Ledger = actor ("ryjl3-tyaaa-aaaaa-aaaba-cai");
   public let transferFeeE8s : Nat = 10_000;
   public let tinyUrlPriceE8s : Nat = 100_000_000;
   public let treasuryAccountIdHex = "91cfa92ae9d2cb6f5fe0db77f7017dff6c3f86ccca2fdf564d1348b56347be18";
