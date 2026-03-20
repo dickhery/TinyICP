@@ -5,7 +5,7 @@ import UrlRouter "UrlRouter";
 import UrlStore "UrlStore";
 import BTree "mo:stableheapbtreemap/BTree";
 import Principal "mo:core@1/Principal";
-import Error "mo:core@1/Error";
+import Runtime "mo:core@1/Runtime";
 import Result "mo:core@1/Result";
 
 shared ({ caller = initializer }) persistent actor class Actor() = self {
@@ -49,7 +49,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
 
   func assertAuthenticated(caller : Principal) {
     if (Principal.isAnonymous(caller)) {
-      throw Error.reject("Authentication required");
+      Runtime.trap("Authentication required");
     };
   };
 
