@@ -932,3 +932,62 @@ button[type="submit"] {
 .browser-warning {
   display: none;
 }
+
+.auth-shell {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+}
+
+.auth-card {
+  width: min(560px, 100%);
+  border: 2px solid #00ff00;
+  padding: 2.5rem;
+  background: radial-gradient(circle at top, rgba(0, 255, 0, 0.08), transparent 55%), #000;
+  text-align: center;
+  box-shadow: 0 0 24px rgba(0, 255, 0, 0.18);
+}
+
+.auth-kicker {
+  color: #00aaff;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+
+.auth-card h2 {
+  margin-top: 0;
+  font-size: 1.8rem;
+}
+
+.auth-card p {
+  color: #d6ffd6;
+}
+
+.auth-btn {
+  margin-top: 1.5rem;
+}
+
+.auth-footnote {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  color: #8acb8a;
+}
+
+.session-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  border: 1px solid #00ff00;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  background: rgba(0, 255, 0, 0.05);
+  flex-wrap: wrap;
+}
+
+.session-bar code {
+  color: #66ff66;
+  word-break: break-all;
+}

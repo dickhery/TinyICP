@@ -4,6 +4,9 @@ import Router "mo:liminal/Router";
 import UrlRouter "UrlRouter";
 import UrlStore "UrlStore";
 import BTree "mo:stableheapbtreemap/BTree";
+import Principal "mo:core@1/Principal";
+import Runtime "mo:core@1/Runtime";
+import Result "mo:core@1/Result";
 
 shared ({ caller = initializer }) persistent actor class Actor() = self {
   var urlStableData : UrlStore.StableData = {
@@ -12,10 +15,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
   };
 
   transient var urlStore = UrlStore.Store(urlStableData);
-
   transient let urlRouter = UrlRouter.Router(urlStore);
-
-  // Upgrade methods
 
   system func preupgrade() {
     urlStableData := urlStore.toStableData();
@@ -25,32 +25,52 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     urlStore := UrlStore.Store(urlStableData);
   };
 
+  public shared query ({ caller }) func list_my_urls() : async [UrlStore.UrlView] {
+    assertAuthenticated(caller);
+    urlStore.getUrlsByOwner(caller);
+  };
+
+  public shared ({ caller }) func create_my_url(request : UrlStore.CreateRequest) : async Result.Result<UrlStore.UrlView, Text> {
+    assertAuthenticated(caller);
+    switch (urlStore.create(request, caller)) {
+      case (#ok(url)) #ok(urlStore.toView(url));
+      case (#err(message)) #err(message);
+    };
+  };
+
+  public shared ({ caller }) func delete_my_url(id : Nat) : async Result.Result<(), Text> {
+    assertAuthenticated(caller);
+    urlStore.delete(id, caller);
+  };
+
+  public shared query ({ caller }) func whoami() : async Principal {
+    caller;
+  };
+
+  func assertAuthenticated(caller : Principal) {
+    if (Principal.isAnonymous(caller)) {
+      Runtime.trap("Authentication required");
+    };
+  };
+
   transient let routerConfig : RouterMiddleware.Config = {
     prefix = null;
     identityRequirement = null;
     routes = [
-      // URL management endpoints
       Router.getQuery("/urls", urlRouter.getAllUrls),
       Router.postUpdate("/shorten", urlRouter.createShortUrl),
       Router.deleteUpdate("/urls/{id}", urlRouter.deleteUrl),
-
-      // Short URL redirect and stats
       Router.getUpdate("/s/{shortCode}", urlRouter.redirect),
       Router.getQuery("/s/{shortCode}/stats", urlRouter.getStats),
     ];
   };
 
-  // Http App
   transient let app = Liminal.App({
-    middleware = [
-      RouterMiddleware.new(routerConfig),
-    ];
+    middleware = [RouterMiddleware.new(routerConfig)];
     errorSerializer = Liminal.defaultJsonErrorSerializer;
     candidRepresentationNegotiator = Liminal.defaultCandidRepresentationNegotiator;
     logger = Liminal.buildDebugLogger(#info);
   });
-
-  // Http server methods
 
   public query func http_request(request : Liminal.RawQueryHttpRequest) : async Liminal.RawQueryHttpResponse {
     app.http_request(request);
@@ -59,5 +79,4 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
   public func http_request_update(request : Liminal.RawUpdateHttpRequest) : async Liminal.RawUpdateHttpResponse {
     await* app.http_request_update(request);
   };
-
 };
