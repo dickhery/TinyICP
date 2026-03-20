@@ -32,7 +32,7 @@ module {
     #TxDuplicate : { duplicate_of : Nat64 };
   };
   public type TransferResult = { #Ok : Nat64; #Err : TransferError };
-  public type AccountBalanceArgs = { account : Blob };
+  public type AccountBalanceArgs = { account : Text };
   public type Ledger = actor {
     account_balance_dfx : shared query AccountBalanceArgs -> async Tokens;
     transfer : shared TransferArgs -> async TransferResult;
@@ -130,10 +130,11 @@ module {
 
   public func getWalletInfo(canisterPrincipal : Principal, user : Principal) : async WalletInfo {
     let account = accountIdForUser(canisterPrincipal, user);
-    let balance = await ledger.account_balance_dfx({ account });
+    let depositAccountId = toHex(account);
+    let balance = await ledger.account_balance_dfx({ account = depositAccountId });
     {
       canisterPrincipal;
-      depositAccountId = toHex(account);
+      depositAccountId;
       subaccountHex = toHex(subaccountForPrincipal(user));
       balanceE8s = Nat64.toNat(balance.e8s);
       transferFeeE8s;
