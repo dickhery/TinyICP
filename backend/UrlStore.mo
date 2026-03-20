@@ -82,7 +82,13 @@ module {
     public func getUrlByShortCode(shortCode : Text) : ?Url {
       let ?id = Map.get(slugToIdMap, Text.compare, shortCode) else return null;
       switch (BTree.get(stableData.urls, Nat.compare, id)) {
-        case (?url) if (url.paid) ?url;
+        case (?url) {
+          if (url.paid) {
+            ?url;
+          } else {
+            null;
+          };
+        };
         case _ null;
       };
     };
