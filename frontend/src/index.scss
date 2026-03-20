@@ -1094,3 +1094,20 @@ textarea {
 code {
   word-break: break-all;
 }
+
+
+.wallet-help {
+  margin: 0 0 1rem;
+  color: #d6ffd6;
+}
+
+.wallet-status {
+  border: 1px dashed #00ff00;
+  padding: 1rem;
+  color: #d6ffd6;
+}
+
+.wallet-status.warning {
+  border-color: #ffcc00;
+  color: #ffe88a;
+}

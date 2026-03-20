@@ -57,7 +57,7 @@ const normalizeWallet = (wallet) => ({
   tinyUrlPriceE8s: Number(wallet.tinyUrlPriceE8s)
 });
 
-export const formatIcp = (e8s) => (Number(e8s) / 100_000_000).toFixed(4);
+export const formatIcp = (e8s) => (Number(e8s) / 100_000_000).toFixed(2);
 
 export class UrlApi {
   static async getAllUrls() {

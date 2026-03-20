@@ -14,6 +14,7 @@
     let wallet = null;
     let loading = false;
     let walletLoading = false;
+    let walletError = "";
     let authLoading = true;
     let authenticated = false;
     let principal = "";
@@ -46,6 +47,7 @@
             authenticated = false;
             principal = "";
             wallet = null;
+            walletError = "";
             error = "Failed to initialize authentication: " + err.message;
         } finally {
             authLoading = false;
@@ -76,11 +78,12 @@
         }
 
         walletLoading = true;
-        error = "";
+        walletError = "";
         try {
             wallet = await UrlApi.getWalletInfo();
         } catch (err) {
-            error = "Failed to load wallet: " + err.message;
+            wallet = null;
+            walletError = "Failed to load wallet: " + err.message;
         } finally {
             walletLoading = false;
         }
@@ -143,7 +146,7 @@
             newUrl = "";
             customSlug = "";
             await loadWallet();
-            showSuccess(`Paid 1.0000 ICP and created ${UrlApi.getShortUrl(shortenedUrl.shortCode)}`);
+            showSuccess(`Paid 1.00 ICP and created ${UrlApi.getShortUrl(shortenedUrl.shortCode)}`);
         } catch (err) {
             error = "Failed to shorten URL: " + err.message;
         } finally {
@@ -259,7 +262,7 @@
         <div class="modal-backdrop">
             <div class="modal-card">
                 <p class="auth-kicker">Payment confirmation</p>
-                <h2>Create this Tiny ICP URL for 1.0000 ICP?</h2>
+                <h2>Create this Tiny ICP URL for 1.00 ICP?</h2>
                 <p>This charge will be sent from your in-app wallet balance. Ledger network fees still apply.</p>
                 <div class="modal-summary">
                     <div><strong>URL:</strong> {newUrl}</div>
@@ -268,7 +271,7 @@
                 </div>
                 <div class="modal-actions">
                     <button class="refresh-btn" type="button" on:click={() => (showPaymentModal = false)}>Cancel</button>
-                    <button class="shorten-btn" type="button" on:click={confirmShortenUrl}>Confirm 1 ICP Payment</button>
+                    <button class="shorten-btn" type="button" on:click={confirmShortenUrl}>Confirm 1.00 ICP Payment</button>
                 </div>
             </div>
         </div>
@@ -297,19 +300,28 @@
                     <h2>In-App ICP Wallet</h2>
                     <button on:click={loadWallet} disabled={walletLoading} class="refresh-btn">{walletLoading ? "Refreshing..." : "Refresh Wallet"}</button>
                 </div>
-                {#if wallet}
+                <p class="wallet-help">Your in-app wallet is where Tiny ICP receives deposits, shows your ICP balance, and sends ICP out to another PID or account ID.</p>
+                {#if walletLoading && !wallet}
+                    <div class="wallet-status">Loading your wallet details...</div>
+                {:else if wallet}
                     <div class="wallet-grid">
                         <div class="wallet-card"><span class="wallet-label">Available balance</span><strong>{formatIcp(wallet.balanceE8s)} ICP</strong><small>Need at least {formatIcp(wallet.tinyUrlPriceE8s + wallet.transferFeeE8s)} ICP to buy one Tiny URL.</small></div>
-                        <div class="wallet-card"><span class="wallet-label">Canister principal (PID)</span><code>{wallet.canisterPrincipal}</code><button class="copy-btn small" on:click={() => copyToClipboard(wallet.canisterPrincipal)}>{copiedWalletValue === wallet.canisterPrincipal ? "Copied ✓" : "Copy PID"}</button></div>
-                        <div class="wallet-card full"><span class="wallet-label">Deposit account ID</span><code>{wallet.depositAccountId}</code><small>Send ICP to this account ID to fund your in-app wallet.</small><button class="copy-btn small" on:click={() => copyToClipboard(wallet.depositAccountId)}>{copiedWalletValue === wallet.depositAccountId ? "Copied ✓" : "Copy Account ID"}</button></div>
+                        <div class="wallet-card"><span class="wallet-label">Canister principal (PID)</span><code>{wallet.canisterPrincipal}</code><small>Users can send ICP by targeting this canister PID with the account ID below.</small><button class="copy-btn small" on:click={() => copyToClipboard(wallet.canisterPrincipal)}>{copiedWalletValue === wallet.canisterPrincipal ? "Copied ✓" : "Copy PID"}</button></div>
+                        <div class="wallet-card full"><span class="wallet-label">Deposit account ID</span><code>{wallet.depositAccountId}</code><small>Send ICP to this account ID to fund your in-app wallet balance.</small><button class="copy-btn small" on:click={() => copyToClipboard(wallet.depositAccountId)}>{copiedWalletValue === wallet.depositAccountId ? "Copied ✓" : "Copy Account ID"}</button></div>
                         <div class="wallet-card full"><span class="wallet-label">Wallet subaccount</span><code>{wallet.subaccountHex}</code><small>Derived from your principal and managed by this canister.</small></div>
                     </div>
                     <form class="transfer-form" on:submit|preventDefault={transferFromWallet}>
                         <div class="form-field"><label class="form-label" for="transfer-destination">Transfer to PID or account ID</label><input id="transfer-destination" class="form-input" bind:value={transferDestination} placeholder="Principal ID or 64-char account ID" /></div>
-                        <div class="form-field"><label class="form-label" for="transfer-amount">Amount (ICP)</label><input id="transfer-amount" class="form-input" type="number" min="0.0001" step="0.0001" bind:value={transferAmount} placeholder="1.2500" /></div>
+                        <div class="form-field"><label class="form-label" for="transfer-amount">Amount (ICP)</label><input id="transfer-amount" class="form-input" type="number" min="0.01" step="0.01" bind:value={transferAmount} placeholder="1.25" /></div>
                         <small class="form-help">Outgoing transfers also pay the {formatIcp(wallet.transferFeeE8s)} ICP ledger fee from your wallet balance.</small>
                         <button class="shorten-btn" type="submit" disabled={walletLoading}>Send ICP</button>
                     </form>
+                {:else}
+                    <div class="wallet-status warning">
+                        <strong>Wallet unavailable.</strong>
+                        <div>{walletError || "We could not load your wallet details yet."}</div>
+                        <small>Use Refresh Wallet to try again. Once loaded, this section will show your PID, deposit account ID, balance, and transfer form.</small>
+                    </div>
                 {/if}
             </div>
 
