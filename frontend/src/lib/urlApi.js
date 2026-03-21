@@ -54,7 +54,8 @@ const normalizeWallet = (wallet) => ({
   canisterPrincipal: wallet.canisterPrincipal.toText(),
   balanceE8s: Number(wallet.balanceE8s),
   transferFeeE8s: Number(wallet.transferFeeE8s),
-  tinyUrlPriceE8s: Number(wallet.tinyUrlPriceE8s)
+  tinyUrlPriceE8s: Number(wallet.tinyUrlPriceE8s),
+  paymentTargetAccountId: wallet.paymentTargetAccountId
 });
 
 export const formatIcp = (e8s) => (Number(e8s) / 100_000_000).toFixed(2);
@@ -95,6 +96,20 @@ export class UrlApi {
     const actor = await getBackendActor();
     const result = await actor.delete_my_url(BigInt(id));
     unwrapResult(result, 'delete URL');
+  }
+
+  static async withdrawFromWallet(destinationAccountId, amountE8s) {
+    if (!destinationAccountId || !destinationAccountId.trim()) {
+      throw new Error('Destination account ID is required');
+    }
+
+    if (!Number.isFinite(amountE8s) || amountE8s <= 0) {
+      throw new Error('Withdrawal amount must be greater than zero');
+    }
+
+    const actor = await getBackendActor();
+    const result = await actor.withdraw_from_wallet(destinationAccountId.trim(), BigInt(Math.round(amountE8s)));
+    unwrapResult(result, 'withdraw ICP from wallet');
   }
 
   static getShortUrl(shortCode) {

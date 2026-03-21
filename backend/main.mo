@@ -16,7 +16,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
   };
 
   transient var urlStore = UrlStore.Store(urlStableData);
-  transient let urlRouter = UrlRouter.Router(urlStore);
+  transient var urlRouter = UrlRouter.Router(urlStore);
   transient let canisterPrincipal = Principal.fromActor(self);
 
   system func preupgrade() {
@@ -25,6 +25,9 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
 
   system func postupgrade() {
     urlStore := UrlStore.Store(urlStableData);
+    urlRouter := UrlRouter.Router(urlStore);
+    routerConfig := buildRouterConfig();
+    app := buildApp(routerConfig);
   };
 
   public shared query ({ caller }) func list_my_urls() : async [UrlStore.UrlView] {
@@ -39,15 +42,35 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
 
   public shared ({ caller }) func create_my_url(request : UrlStore.CreateRequest) : async Result.Result<UrlStore.UrlView, Text> {
     assertAuthenticated(caller);
-    switch (urlStore.create(request, caller)) {
-      case (#ok(url)) #ok(urlStore.toView(url));
-      case (#err(message)) #err(message);
+
+    switch (urlStore.validateCreateRequest(request)) {
+      case (#err(message)) {
+        return #err(message);
+      };
+      case (#ok(())) {};
+    };
+
+    switch (await IcpLedger.chargeForUrl(canisterPrincipal, caller)) {
+      case (#err(message)) {
+        #err("Payment required before Tiny ICP can create your short URL. " # message);
+      };
+      case (#ok(())) {
+        switch (urlStore.create(request, caller)) {
+          case (#ok(url)) #ok(urlStore.toView(url));
+          case (#err(message)) #err(message);
+        };
+      };
     };
   };
 
   public shared ({ caller }) func delete_my_url(id : Nat) : async Result.Result<(), Text> {
     assertAuthenticated(caller);
     urlStore.delete(id, caller);
+  };
+
+  public shared ({ caller }) func withdraw_from_wallet(destinationAccountId : Text, amountE8s : Nat) : async Result.Result<(), Text> {
+    assertAuthenticated(caller);
+    await IcpLedger.withdrawFromWallet(canisterPrincipal, caller, destinationAccountId, amountE8s);
   };
 
   public shared query ({ caller }) func whoami() : async Principal {
@@ -60,24 +83,32 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     };
   };
 
-  transient let routerConfig : RouterMiddleware.Config = {
-    prefix = null;
-    identityRequirement = null;
-    routes = [
-      Router.getQuery("/urls", urlRouter.getAllUrls),
-      Router.postUpdate("/shorten", urlRouter.createShortUrl),
-      Router.deleteUpdate("/urls/{id}", urlRouter.deleteUrl),
-      Router.getUpdate("/s/{shortCode}", urlRouter.redirect),
-      Router.getQuery("/s/{shortCode}/stats", urlRouter.getStats),
-    ];
+  func buildRouterConfig() : RouterMiddleware.Config {
+    {
+      prefix = null;
+      identityRequirement = null;
+      routes = [
+        Router.getQuery("/urls", urlRouter.getAllUrls),
+        Router.postUpdate("/shorten", urlRouter.createShortUrl),
+        Router.deleteUpdate("/urls/{id}", urlRouter.deleteUrl),
+        Router.getUpdate("/s/{shortCode}", urlRouter.redirect),
+        Router.getQuery("/s/{shortCode}/stats", urlRouter.getStats),
+      ];
+    };
   };
 
-  transient let app = Liminal.App({
-    middleware = [RouterMiddleware.new(routerConfig)];
-    errorSerializer = Liminal.defaultJsonErrorSerializer;
-    candidRepresentationNegotiator = Liminal.defaultCandidRepresentationNegotiator;
-    logger = Liminal.buildDebugLogger(#info);
-  });
+  func buildApp(config : RouterMiddleware.Config) : Liminal.App {
+    Liminal.App({
+      middleware = [RouterMiddleware.new(config)];
+      errorSerializer = Liminal.defaultJsonErrorSerializer;
+      candidRepresentationNegotiator = Liminal.defaultCandidRepresentationNegotiator;
+      logger = Liminal.buildDebugLogger(#info);
+    });
+  };
+
+  transient var routerConfig : RouterMiddleware.Config = buildRouterConfig();
+
+  transient var app : Liminal.App = buildApp(routerConfig);
 
   public query func http_request(request : Liminal.RawQueryHttpRequest) : async Liminal.RawQueryHttpResponse {
     app.http_request(request);

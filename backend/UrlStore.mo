@@ -94,12 +94,12 @@ module {
       ?url.originalUrl;
     };
 
-    public func create(request : CreateRequest, owner : Principal) : Result.Result<Url, Text> {
+    public func validateCreateRequest(request : CreateRequest) : Result.Result<(), Text> {
       if (not isValidUrl(request.originalUrl)) {
         return #err("Invalid URL format: " # request.originalUrl);
       };
 
-      let shortCode = switch (request.customSlug) {
+      switch (request.customSlug) {
         case (?slug) {
           if (not isValidSlug(slug)) {
             return #err("Invalid custom slug. Use only letters, numbers, hyphens, and underscores");
@@ -107,8 +107,21 @@ module {
           if (Map.get(slugToIdMap, Text.compare, slug) != null) {
             return #err("Custom slug already exists");
           };
-          slug;
         };
+        case null {};
+      };
+
+      #ok(());
+    };
+
+    public func create(request : CreateRequest, owner : Principal) : Result.Result<Url, Text> {
+      switch (validateCreateRequest(request)) {
+        case (#err(message)) return #err(message);
+        case (#ok(())) {};
+      };
+
+      let shortCode = switch (request.customSlug) {
+        case (?slug) { slug };
         case null {
           generateShortCode();
         };
