@@ -264,11 +264,7 @@
     }
 
     function getPublicShortUrl(shortCode) {
-        if (typeof window === "undefined") {
-            return `/s/${shortCode}`;
-        }
-
-        return `${window.location.origin}/s/${shortCode}`;
+        return `${getBackendBaseUrl(false)}/s/${shortCode}`;
     }
 
     function copyWithExecCommand(text) {
