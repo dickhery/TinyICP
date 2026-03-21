@@ -380,7 +380,7 @@
             withdrawalAccountId = "";
             withdrawalAmountIcp = "";
             await loadWallet();
-            showSuccess(`Withdrawn ${amountIcp.toFixed(4)} ICP from your in-app wallet.`);
+            showSuccess(`Withdrawn ${formatIcp(amountE8s)} ICP from your in-app wallet.`);
         } catch (err) {
             error = "Failed to withdraw ICP: " + err.message;
             console.error("Error withdrawing ICP:", err);
@@ -506,9 +506,9 @@
                     </button>
                 </div>
                 <p class="wallet-help">
-                    Your Tiny ICP wallet shows the canister principal, deposit
-                    account ID, derived subaccount, and current ICP balance for
-                    your authenticated identity.
+                    Your Tiny ICP wallet shows your available balance, deposit
+                    account ID, and withdrawal tools for your authenticated
+                    identity.
                 </p>
                 {#if walletLoading && !wallet}
                     <div class="wallet-status">Loading your wallet details...</div>
@@ -521,23 +521,6 @@
                                 Deposit ICP into your account ID below to fund
                                 this wallet.
                             </small>
-                        </div>
-                        <div class="wallet-card">
-                            <span class="wallet-label">Canister principal (PID)</span>
-                            <code>{wallet.canisterPrincipal}</code>
-                            <small>
-                                This canister principal owns your derived
-                                deposit account.
-                            </small>
-                            <button
-                                class="copy-btn small"
-                                class:copied={copiedWalletValue === wallet.canisterPrincipal}
-                                on:click={() => copyToClipboard(wallet.canisterPrincipal)}
-                            >
-                                {copiedWalletValue === wallet.canisterPrincipal
-                                    ? "Copied ✓"
-                                    : "Copy PID"}
-                            </button>
                         </div>
                         <div class="wallet-card full">
                             <span class="wallet-label">Deposit account ID</span>
@@ -555,21 +538,6 @@
                                     ? "Copied ✓"
                                     : "Copy Account ID"}
                             </button>
-                        </div>
-                        <div class="wallet-card full">
-                            <span class="wallet-label">Wallet subaccount</span>
-                            <code>{wallet.subaccountHex}</code>
-                            <small>
-                                This subaccount is deterministically derived from
-                                your authenticated principal.
-                            </small>
-                        </div>
-                        <div class="wallet-card full">
-                            <span class="wallet-label">Tiny URL payment account ID</span>
-                            <code>{wallet.paymentTargetAccountId}</code>
-                            <small>
-                                Each new short URL transfers 1.0 ICP to this destination before creation succeeds.
-                            </small>
                         </div>
                     </div>
 
