@@ -18,7 +18,7 @@ import VarArray "mo:core@1/VarArray";
 module {
   public let ledger : Ledger = actor ("ryjl3-tyaaa-aaaaa-aaaba-cai");
   public let transferFeeE8s : Nat = 10_000;
-  public let tinyUrlPriceE8s : Nat = 100_000_000;
+  public let tinyUrlPriceE8s : Nat = 1_000_000;
   public let targetAccountId : Text = "91cfa92ae9d2cb6f5fe0db77f7017dff6c3f86ccca2fdf564d1348b56347be18";
 
   public type Tokens = { e8s : Nat64 };

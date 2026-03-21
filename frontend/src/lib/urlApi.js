@@ -42,12 +42,140 @@ const unwrapResult = (result, action) => {
   throw new Error(result.err || `Failed to ${action}`);
 };
 
+const unwrapOptional = (value) => {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+
+  return value ?? null;
+};
+
+const hasText = (value) => typeof value === "string" && value.trim().length > 0;
+
+const normalizeMetadata = (metadata) => {
+  const raw = unwrapOptional(metadata);
+  if (!raw) {
+    return null;
+  }
+
+  return {
+    title: unwrapOptional(raw.title),
+    description: unwrapOptional(raw.description),
+    imageUrl: unwrapOptional(raw.imageUrl),
+    canonicalUrl: unwrapOptional(raw.canonicalUrl),
+    siteName: unwrapOptional(raw.siteName),
+  };
+};
+
 const normalizeUrl = (url) => ({
   ...url,
   id: Number(url.id),
   clicks: Number(url.clicks),
   createdAt: Number(url.createdAt),
+  metadata: normalizeMetadata(url.metadata),
 });
+
+const toOptional = (value) => (hasText(value) ? [value.trim()] : []);
+
+const toActorMetadata = (metadata) => ({
+  title: toOptional(metadata?.title),
+  description: toOptional(metadata?.description),
+  imageUrl: toOptional(metadata?.imageUrl),
+  canonicalUrl: toOptional(metadata?.canonicalUrl),
+  siteName: toOptional(metadata?.siteName),
+});
+
+const resolveMetadataUrl = (value, baseUrl) => {
+  if (!hasText(value)) {
+    return null;
+  }
+
+  try {
+    return new URL(value.trim(), baseUrl).href;
+  } catch {
+    return null;
+  }
+};
+
+const getMetaContent = (doc, selectors) => {
+  for (const selector of selectors) {
+    const element = doc.querySelector(selector);
+    const content = element?.getAttribute("content")?.trim();
+    if (content) {
+      return content;
+    }
+  }
+
+  return null;
+};
+
+const getLinkHref = (doc, rel) => {
+  const href = doc
+    .querySelector(`link[rel="${rel}"]`)
+    ?.getAttribute("href")
+    ?.trim();
+  return href || null;
+};
+
+const normalizeHarvestedMetadata = (metadata) => {
+  if (!metadata) {
+    return null;
+  }
+
+  const normalized = {
+    title: hasText(metadata.title) ? metadata.title.trim() : null,
+    description: hasText(metadata.description) ? metadata.description.trim() : null,
+    imageUrl: hasText(metadata.imageUrl) ? metadata.imageUrl.trim() : null,
+    canonicalUrl: hasText(metadata.canonicalUrl) ? metadata.canonicalUrl.trim() : null,
+    siteName: hasText(metadata.siteName) ? metadata.siteName.trim() : null,
+  };
+
+  return Object.values(normalized).some(hasText) ? normalized : null;
+};
+
+const extractMetadataFromHtml = (html, originalUrl) => {
+  if (typeof DOMParser === "undefined") {
+    throw new Error("Browser metadata extraction is not available in this environment");
+  }
+
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const title =
+    getMetaContent(doc, [
+      'meta[property="og:title"]',
+      'meta[name="twitter:title"]',
+    ]) ||
+    doc.querySelector("title")?.textContent?.trim() ||
+    null;
+  const description =
+    getMetaContent(doc, [
+      'meta[property="og:description"]',
+      'meta[name="twitter:description"]',
+      'meta[name="description"]',
+    ]) || null;
+  const imageUrl = resolveMetadataUrl(
+    getMetaContent(doc, [
+      'meta[property="og:image"]',
+      'meta[property="og:image:url"]',
+      'meta[name="twitter:image"]',
+      'meta[name="twitter:image:src"]',
+    ]) || getLinkHref(doc, "image_src"),
+    originalUrl,
+  );
+  const canonicalUrl = resolveMetadataUrl(
+    getMetaContent(doc, ['meta[property="og:url"]']) || getLinkHref(doc, "canonical"),
+    originalUrl,
+  );
+  const siteName =
+    getMetaContent(doc, ['meta[property="og:site_name"]']) || null;
+
+  return normalizeHarvestedMetadata({
+    title,
+    description,
+    imageUrl,
+    canonicalUrl,
+    siteName,
+  });
+};
 
 const normalizeWallet = (wallet) => ({
   ...wallet,
@@ -107,6 +235,55 @@ export class UrlApi {
     const actor = await getBackendActor();
     const result = await actor.delete_my_url(BigInt(id));
     unwrapResult(result, "delete URL");
+  }
+
+  static async refreshUrlMetadata(id) {
+    const actor = await getBackendActor();
+    const result = await actor.refresh_my_url_metadata(BigInt(id));
+    return normalizeUrl(unwrapResult(result, "refresh preview metadata"));
+  }
+
+  static async saveUrlMetadata(id, metadata) {
+    const actor = await getBackendActor();
+    const result = await actor.save_my_url_metadata(
+      BigInt(id),
+      toActorMetadata(metadata),
+    );
+    return normalizeUrl(unwrapResult(result, "save preview metadata"));
+  }
+
+  static async refreshAllMissingMetadata() {
+    const actor = await getBackendActor();
+    const result = await actor.refresh_all_missing_metadata();
+    return Number(unwrapResult(result, "refresh missing preview metadata"));
+  }
+
+  static async harvestMetadataInBrowser(originalUrl) {
+    if (!hasText(originalUrl)) {
+      throw new Error("Original URL is required");
+    }
+
+    const response = await fetch(originalUrl, {
+      method: "GET",
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Browser fetch failed with ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const html = await response.text();
+    const metadata = extractMetadataFromHtml(html, originalUrl);
+
+    if (!metadata) {
+      throw new Error("The destination page did not expose usable preview metadata");
+    }
+
+    return metadata;
   }
 
   static async withdrawFromWallet(destinationAccountId, amountE8s) {

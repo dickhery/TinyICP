@@ -29,6 +29,8 @@
     let pendingRequest = null;
     let withdrawalAccountId = "";
     let withdrawalAmountIcp = "";
+    let refreshingPreviewIds = [];
+    const customSlugPattern = /^[A-Za-z0-9_-]+$/;
 
     function getBackendBaseUrl(raw = true) {
         const canisterIdAndRaw = raw ? `${canisterId}.raw` : canisterId;
@@ -50,29 +52,6 @@
 
         return `https://${canisterIdAndRaw}.icp0.io`;
     }
-
-    $: curlCommand = (() => {
-        const baseUrl = getBackendBaseUrl();
-
-        if (!newUrl.trim()) {
-            return `curl '${baseUrl}/shorten' \\
-  -H 'Accept: */*' \\
-  -H 'Content-Type: text/plain' \\
-  -d 'https://example.com'`;
-        }
-
-        if (customSlug.trim()) {
-            return `curl '${baseUrl}/shorten' \\
-  -H 'Accept: */*' \\
-  -H 'Content-Type: application/x-www-form-urlencoded' \\
-  -d 'url=${encodeURIComponent(newUrl)}&slug=${encodeURIComponent(customSlug)}'`;
-        }
-
-        return `curl '${baseUrl}/shorten' \\
-  -H 'Accept: */*' \\
-  -H 'Content-Type: text/plain' \\
-  -d '${newUrl}'`;
-    })();
 
     async function syncAuthState() {
         authLoading = true;
@@ -186,6 +165,12 @@
             return;
         }
 
+        if (customSlug.trim() && !customSlugPattern.test(customSlug.trim())) {
+            error =
+                "Custom short codes can use only letters, numbers, hyphens, and underscores.";
+            return;
+        }
+
         error = "";
         pendingRequest = {
             originalUrl: newUrl.trim(),
@@ -222,14 +207,15 @@
                 pendingRequest.originalUrl,
                 pendingRequest.customSlug
             );
-            urls = [shortenedUrl, ...urls];
+            const hydratedUrl = await maybeHydratePreview(shortenedUrl);
+            urls = [hydratedUrl, ...urls];
             newUrl = "";
             customSlug = "";
             showPurchaseModal = false;
             pendingRequest = null;
             await loadWallet();
 
-            const shortCode = shortenedUrl.shortCode;
+            const shortCode = hydratedUrl.shortCode;
             const fullShortUrl = getPublicShortUrl(shortCode);
             showSuccess(`[>] Short URL created: ${fullShortUrl}`);
         } catch (err) {
@@ -263,8 +249,105 @@
         }
     }
 
+    async function refreshUrlPreview(id) {
+        refreshingPreviewIds = [...refreshingPreviewIds, id];
+        error = "";
+
+        try {
+            const refreshedUrl = await refreshUrlPreviewWithFallback(id);
+            urls = urls.map((url) => (url.id === id ? refreshedUrl : url));
+            showSuccess(`Preview refreshed for /${refreshedUrl.shortCode}`);
+        } catch (err) {
+            error = "Failed to refresh preview metadata: " + err.message;
+            console.error("Error refreshing preview metadata:", err);
+        } finally {
+            refreshingPreviewIds = refreshingPreviewIds.filter(
+                (refreshingId) => refreshingId !== id
+            );
+        }
+    }
+
+    async function maybeHydratePreview(url) {
+        if (!url || getPreviewStatus(url) !== "missing") {
+            return url;
+        }
+
+        try {
+            return await syncPreviewViaBrowser(url);
+        } catch (previewError) {
+            console.warn("Browser preview hydration failed:", previewError);
+            return url;
+        }
+    }
+
+    async function refreshUrlPreviewWithFallback(id) {
+        const existingUrl = urls.find((url) => url.id === id);
+
+        try {
+            return await UrlApi.refreshUrlMetadata(id);
+        } catch (backendError) {
+            if (!existingUrl) {
+                throw backendError;
+            }
+
+            try {
+                return await syncPreviewViaBrowser(existingUrl);
+            } catch (browserError) {
+                throw new Error(
+                    `${backendError.message} Browser fallback also failed: ${browserError.message}`
+                );
+            }
+        }
+    }
+
+    async function syncPreviewViaBrowser(url) {
+        const metadata = await UrlApi.harvestMetadataInBrowser(url.originalUrl);
+        return await UrlApi.saveUrlMetadata(url.id, metadata);
+    }
+
     function getPublicShortUrl(shortCode) {
         return `${getBackendBaseUrl(false)}/s/${shortCode}`;
+    }
+
+    function hasText(value) {
+        return typeof value === "string" && value.trim().length > 0;
+    }
+
+    function getPreviewStatus(url) {
+        const metadata = url.metadata;
+        if (!metadata) {
+            return "missing";
+        }
+
+        const hasTextMetadata =
+            hasText(metadata.title) ||
+            hasText(metadata.description) ||
+            hasText(metadata.siteName) ||
+            hasText(metadata.canonicalUrl);
+
+        if (!hasTextMetadata) {
+            return "missing";
+        }
+
+        return hasText(metadata.imageUrl) ? "ready" : "partial";
+    }
+
+    function getPreviewStatusLabel(url) {
+        const status = getPreviewStatus(url);
+
+        if (status === "ready") {
+            return "Preview ready";
+        }
+
+        if (status === "partial") {
+            return "Preview missing image";
+        }
+
+        return "Preview missing metadata";
+    }
+
+    function isRefreshingPreview(id) {
+        return refreshingPreviewIds.includes(id);
     }
 
     function copyWithExecCommand(text) {
@@ -290,10 +373,12 @@
         error = "";
 
         try {
-            if (navigator.clipboard?.writeText) {
-                await navigator.clipboard.writeText(text);
-            } else if (!copyWithExecCommand(text)) {
-                throw new Error("execCommand copy failed");
+            if (!copyWithExecCommand(text)) {
+                if (navigator.clipboard?.writeText) {
+                    await navigator.clipboard.writeText(text);
+                } else {
+                    throw new Error("execCommand copy failed");
+                }
             }
         } catch (clipboardError) {
             if (!copyWithExecCommand(text)) {
@@ -608,7 +693,6 @@
                             bind:value={customSlug}
                             placeholder="my-link"
                             disabled={loading}
-                            pattern="[a-zA-Z0-9_-]+"
                             maxlength="20"
                             class="form-input"
                         />
@@ -625,25 +709,12 @@
                         >
                             {loading ? "Shortening..." : "[>] Shorten URL"}
                         </button>
-
-                        <div
-                            class="curl-alternative"
-                            class:disabled={!newUrl.trim() || !isValidUrl(newUrl)}
-                        >
-                            <p class="curl-label">Or use curl:</p>
-                            <div class="curl-command-container">
-                                <code class="curl-command dynamic">{curlCommand}</code>
-                                <button
-                                    type="button"
-                                    class="copy-btn"
-                                    disabled={!newUrl.trim() || !isValidUrl(newUrl)}
-                                    on:click={() => copyToClipboard(curlCommand)}
-                                >
-                                    [COPY] Copy curl
-                                </button>
-                            </div>
-                        </div>
                     </div>
+                    <p class="form-help preview-note">
+                        New short URLs are created only through the authenticated
+                        wallet flow, and each purchase now captures destination
+                        page metadata for sharing previews.
+                    </p>
                 </form>
             </div>
 
@@ -764,6 +835,54 @@
                                         <div class="url-stats">
                                             <span class="stat">[HITS] {url.clicks || 0} clicks</span>
                                             <span class="stat">[DATE] {formatDate(url.createdAt)}</span>
+                                        </div>
+                                        <div class="preview-panel">
+                                            <div class="preview-panel-header">
+                                                <span
+                                                    class={`preview-badge ${getPreviewStatus(
+                                                        url
+                                                    )}`}
+                                                    >{getPreviewStatusLabel(url)}</span
+                                                >
+                                                <button
+                                                    type="button"
+                                                    class="refresh-btn preview-refresh-btn"
+                                                    on:click={() =>
+                                                        refreshUrlPreview(url.id)}
+                                                    disabled={loading ||
+                                                        isRefreshingPreview(url.id)}
+                                                >
+                                                    {isRefreshingPreview(url.id)
+                                                        ? "Refreshing..."
+                                                        : "Refresh Preview"}
+                                                </button>
+                                            </div>
+                                            {#if url.metadata}
+                                                {#if url.metadata.title}
+                                                    <p class="preview-meta">
+                                                        <strong>Title:</strong>
+                                                        {url.metadata.title}
+                                                    </p>
+                                                {/if}
+                                                {#if url.metadata.description}
+                                                    <p class="preview-meta">
+                                                        <strong>Description:</strong>
+                                                        {url.metadata.description}
+                                                    </p>
+                                                {/if}
+                                                {#if url.metadata.imageUrl}
+                                                    <p class="preview-meta">
+                                                        <strong>Image:</strong>
+                                                        <a
+                                                            href={url.metadata.imageUrl}
+                                                            target="_blank"
+                                                            rel="noopener"
+                                                        >
+                                                            {url.metadata.imageUrl}
+                                                        </a>
+                                                    </p>
+                                                {/if}
+                                            {/if}
                                         </div>
                                     </div>
                                 </div>

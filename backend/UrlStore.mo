@@ -90,6 +90,10 @@ module {
       BTree.get(stableData.urls, Nat.compare, id);
     };
 
+    public func getUrlById(id : Nat) : ?Url {
+      BTree.get(stableData.urls, Nat.compare, id);
+    };
+
     public func incrementClicks(shortCode : Text) : ?Url {
       let ?url = getUrlByShortCode(shortCode) else return null;
 
@@ -166,6 +170,60 @@ module {
       #ok(());
     };
 
+    public func updateMetadata(id : Nat, caller : Principal, metadata : ?UrlMetadata) : Result.Result<Url, Text> {
+      let ?url = getUrlById(id) else return #err("URL not found");
+
+      if (not Principal.equal(url.owner, caller)) {
+        return #err("You can only refresh URLs you created");
+      };
+
+      replaceMetadata(id, metadata);
+    };
+
+    public func replaceMetadata(id : Nat, metadata : ?UrlMetadata) : Result.Result<Url, Text> {
+      let ?url = getUrlById(id) else return #err("URL not found");
+
+      let updatedUrl : Url = {
+        url with
+        metadata = metadata;
+      };
+
+      ignore BTree.insert(stableData.urls, Nat.compare, id, updatedUrl);
+      #ok(updatedUrl);
+    };
+
+    public func getUrlsMissingMetadataByOwner(owner : Principal) : [Url] {
+      BTree.entries(stableData.urls)
+      |> Iter.map(
+        _,
+        func((_, url) : (Nat, Url)) : ?Url {
+          if (Principal.equal(url.owner, owner) and isMetadataMissing(url.metadata)) {
+            ?url;
+          } else {
+            null;
+          };
+        },
+      )
+      |> Iter.filterMap(_, func(url : ?Url) : ?Url = url)
+      |> Iter.toArray(_);
+    };
+
+    public func getUrlsMissingMetadata() : [Url] {
+      BTree.entries(stableData.urls)
+      |> Iter.map(
+        _,
+        func((_, url) : (Nat, Url)) : ?Url {
+          if (isMetadataMissing(url.metadata)) {
+            ?url;
+          } else {
+            null;
+          };
+        },
+      )
+      |> Iter.filterMap(_, func(url : ?Url) : ?Url = url)
+      |> Iter.toArray(_);
+    };
+
     public func toView(url : Url) : UrlView {
       {
         id = url.id;
@@ -216,6 +274,26 @@ module {
         code # Nat.toText(nextId);
       } else {
         code;
+      };
+    };
+
+    private func isMetadataMissing(metadata : ?UrlMetadata) : Bool {
+      switch (metadata) {
+        case null true;
+        case (?value) {
+          not isNonEmptyText(value.title) and
+          not isNonEmptyText(value.description) and
+          not isNonEmptyText(value.imageUrl) and
+          not isNonEmptyText(value.canonicalUrl) and
+          not isNonEmptyText(value.siteName);
+        };
+      };
+    };
+
+    private func isNonEmptyText(value : ?Text) : Bool {
+      switch (value) {
+        case (?text) text != "";
+        case null false;
       };
     };
   };

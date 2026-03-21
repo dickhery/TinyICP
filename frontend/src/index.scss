@@ -835,6 +835,71 @@ main {
   font-family: 'Courier New', monospace;
 }
 
+.preview-note {
+  margin: 1rem 0 0;
+  color: #d6ffd6;
+}
+
+.preview-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed #00ff00;
+}
+
+.preview-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.preview-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid #00ff00;
+  color: #00ff00;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.preview-badge.ready {
+  border-color: #00ff9c;
+  color: #00ff9c;
+}
+
+.preview-badge.partial {
+  border-color: #ffcc00;
+  color: #ffcc00;
+}
+
+.preview-badge.missing {
+  border-color: #ff6666;
+  color: #ff8888;
+}
+
+.preview-refresh-btn {
+  padding: 0.4rem 0.8rem;
+}
+
+.preview-meta {
+  margin: 0.75rem 0 0;
+  color: #d6ffd6;
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+
+.preview-meta a {
+  color: #8fffd2;
+  text-decoration: none;
+}
+
+.preview-meta a:hover {
+  text-decoration: underline;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   body {

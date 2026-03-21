@@ -1,5 +1,4 @@
 import Array "mo:core@1/Array";
-import Blob "mo:core@1/Blob";
 import Route "mo:liminal/Route";
 import Nat "mo:core@1/Nat";
 import Debug "mo:core@1/Debug";
@@ -16,8 +15,17 @@ import Principal "mo:core@1/Principal";
 module {
 
   public class Router(
-    store : UrlStore.Store
+    store : UrlStore.Store,
+    defaultHost : Text,
   ) = self {
+
+    func buildRedirectHeaders() : [(Text, Text)] {
+      [
+        ("Content-Type", "text/html; charset=utf-8"),
+        ("Cache-Control", "no-store, max-age=0"),
+        ("X-Robots-Tag", "noindex, noarchive"),
+      ];
+    };
 
     public func getAllUrls(routeContext : RouteContext.RouteContext) : Route.HttpResponse {
       let urls = Array.map<UrlStore.Url, UrlStore.UrlView>(store.getAllUrls(), store.toView);
@@ -32,15 +40,13 @@ module {
           routeContext.buildResponse(#notFound, #error(#message("Short URL not found")));
         };
         case (?url) {
-          let html = generateRedirectHtml(shortCode, url.originalUrl, url.metadata);
+          let shortUrl = buildShortUrl(routeContext, shortCode);
+          let html = generateRedirectHtml(shortUrl, shortCode, url.originalUrl, url.metadata);
           routeContext.buildResponse(
             #ok,
             #custom({
               body = Text.encodeUtf8(html);
-              headers = [
-                ("Content-Type", "text/html; charset=utf-8"),
-                ("Cache-Control", "no-cache, no-store, must-revalidate"),
-              ];
+              headers = buildRedirectHeaders();
             }),
           );
         };
@@ -159,45 +165,52 @@ module {
       };
     };
 
-    func generateRedirectHtml(shortCode : Text, originalUrl : Text, metadata : ?UrlStore.UrlMetadata) : Text {
+    func generateRedirectHtml(shortUrl : Text, shortCode : Text, originalUrl : Text, metadata : ?UrlStore.UrlMetadata) : Text {
       let escapedOriginalUrl = escapeHtml(originalUrl);
+      let escapedShortUrl = escapeHtml(shortUrl);
       let title = switch (metadata) {
         case (?data) chooseText(data.title, "TinyICP Short Link - " # shortCode);
         case null "TinyICP Short Link - " # shortCode;
       };
       let description = switch (metadata) {
-        case (?data) chooseText(data.description, "Shortened with TinyICP on the Internet Computer. Original: " # originalUrl);
-        case null "Shortened with TinyICP on the Internet Computer. Original: " # originalUrl;
+        case (?data) chooseText(data.description, "Shared via TinyICP.");
+        case null "Shared via TinyICP.";
       };
       let siteName = switch (metadata) {
         case (?data) chooseText(data.siteName, "TinyICP");
         case null "TinyICP";
       };
-      let canonicalUrl = switch (metadata) {
-        case (?data) chooseText(data.canonicalUrl, originalUrl);
-        case null originalUrl;
-      };
       let escapedTitle = escapeHtml(title);
       let escapedDescription = escapeHtml(description);
       let escapedSiteName = escapeHtml(siteName);
-      let escapedCanonicalUrl = escapeHtml(canonicalUrl);
-      let imageMeta = switch (metadata) {
+      let imageUrl = switch (metadata) {
         case (?data) {
           switch (data.imageUrl) {
             case (?value) {
               if (value != "") {
-                let escapedImageUrl = escapeHtml(value);
-                "    <meta property=\"og:image\" content=\"" # escapedImageUrl # "\">\n" #
-                "    <meta name=\"twitter:image\" content=\"" # escapedImageUrl # "\">\n";
+                ?value;
               } else {
-                "";
+                null;
               };
             };
-            case null "";
+            case null null;
           };
+        };
+        case null null;
+      };
+      let hasImage = imageUrl != null;
+      let twitterCard = if (hasImage) "summary_large_image" else "summary";
+      let imageMeta = switch (imageUrl) {
+        case (?value) {
+          let escapedImageUrl = escapeHtml(value);
+          "    <meta property=\"og:image\" content=\"" # escapedImageUrl # "\">\n" #
+          "    <meta property=\"og:image:url\" content=\"" # escapedImageUrl # "\">\n" #
+          "    <meta property=\"og:image:secure_url\" content=\"" # escapedImageUrl # "\">\n" #
+          "    <meta name=\"twitter:image\" content=\"" # escapedImageUrl # "\">\n";
         };
         case null "";
       };
+      let noscriptRefresh = "    <noscript><meta http-equiv=\"refresh\" content=\"0; url=" # escapedOriginalUrl # "\"></noscript>\n";
 
       "<!DOCTYPE html>\n" #
       "<html lang=\"en\">\n" #
@@ -205,16 +218,18 @@ module {
       "    <meta charset=\"UTF-8\">\n" #
       "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" #
       "    <title>" # escapedTitle # "</title>\n" #
+      "    <link rel=\"canonical\" href=\"" # escapedShortUrl # "\">\n" #
       "    <meta property=\"og:type\" content=\"website\">\n" #
-      "    <meta property=\"og:url\" content=\"" # escapedCanonicalUrl # "\">\n" #
+      "    <meta property=\"og:url\" content=\"" # escapedShortUrl # "\">\n" #
       "    <meta property=\"og:title\" content=\"" # escapedTitle # "\">\n" #
       "    <meta property=\"og:description\" content=\"" # escapedDescription # "\">\n" #
       "    <meta property=\"og:site_name\" content=\"" # escapedSiteName # "\">\n" #
       imageMeta #
-      "    <meta name=\"twitter:card\" content=\"summary_large_image\">\n" #
+      "    <meta name=\"twitter:card\" content=\"" # twitterCard # "\">\n" #
+      "    <meta name=\"twitter:url\" content=\"" # escapedShortUrl # "\">\n" #
       "    <meta name=\"twitter:title\" content=\"" # escapedTitle # "\">\n" #
       "    <meta name=\"twitter:description\" content=\"" # escapedDescription # "\">\n" #
-      "    <meta http-equiv=\"refresh\" content=\"0; url=" # escapedOriginalUrl # "\">\n" #
+      noscriptRefresh #
       "    <style>\n" #
       "      body { font-family: monospace; background: #000; color: #00ff9c; padding: 40px; text-align: center; font-size: 18px; }\n" #
       "      .panel { max-width: 640px; margin: 10vh auto; border: 1px solid #00ff9c; padding: 32px; box-shadow: 0 0 24px rgba(0, 255, 156, 0.15); background: rgba(0,0,0,0.92); }\n" #
@@ -262,6 +277,27 @@ module {
       |> Text.replace(_, #text("'"), "\\'")
       |> Text.replace(_, #text("\n"), "\\n")
       |> Text.replace(_, #text("\r"), "\\r");
+    };
+
+    func buildShortUrl(routeContext : RouteContext.RouteContext, shortCode : Text) : Text {
+      let host = switch (routeContext.getHeader("host")) {
+        case (?value) {
+          if (value != "") {
+            value;
+          } else {
+            defaultHost;
+          };
+        };
+        case null defaultHost;
+      };
+      let scheme = if (hostUsesHttp(host)) "http" else "https";
+      scheme # "://" # host # "/s/" # shortCode;
+    };
+
+    func hostUsesHttp(host : Text) : Bool {
+      Text.contains(host, #text("localhost")) or
+      Text.startsWith(host, #text("127.0.0.1")) or
+      Text.startsWith(host, #text("0.0.0.0"));
     };
   };
 };
