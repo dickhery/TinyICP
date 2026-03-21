@@ -403,7 +403,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
   };
 
   func isWhitespace(char : Char) : Bool {
-    char == ' ' or char == '\\n' or char == '\\r' or char == '\\t';
+    char == ' ' or char == '\n' or char == '\r' or char == '\t';
   };
 
   func decodeHtmlEntities(value : Text) : Text {
