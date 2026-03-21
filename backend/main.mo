@@ -16,7 +16,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
   };
 
   transient var urlStore = UrlStore.Store(urlStableData);
-  transient let urlRouter = UrlRouter.Router(urlStore);
+  transient var urlRouter = UrlRouter.Router(urlStore);
   transient let canisterPrincipal = Principal.fromActor(self);
 
   system func preupgrade() {
@@ -25,6 +25,9 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
 
   system func postupgrade() {
     urlStore := UrlStore.Store(urlStableData);
+    urlRouter := UrlRouter.Router(urlStore);
+    routerConfig := buildRouterConfig();
+    app := buildApp();
   };
 
   public shared query ({ caller }) func list_my_urls() : async [UrlStore.UrlView] {
@@ -80,24 +83,32 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     };
   };
 
-  transient let routerConfig : RouterMiddleware.Config = {
-    prefix = null;
-    identityRequirement = null;
-    routes = [
-      Router.getQuery("/urls", urlRouter.getAllUrls),
-      Router.postUpdate("/shorten", urlRouter.createShortUrl),
-      Router.deleteUpdate("/urls/{id}", urlRouter.deleteUrl),
-      Router.getUpdate("/s/{shortCode}", urlRouter.redirect),
-      Router.getQuery("/s/{shortCode}/stats", urlRouter.getStats),
-    ];
+  transient var routerConfig : RouterMiddleware.Config = buildRouterConfig();
+
+  transient var app = buildApp();
+
+  func buildRouterConfig() : RouterMiddleware.Config {
+    {
+      prefix = null;
+      identityRequirement = null;
+      routes = [
+        Router.getQuery("/urls", urlRouter.getAllUrls),
+        Router.postUpdate("/shorten", urlRouter.createShortUrl),
+        Router.deleteUpdate("/urls/{id}", urlRouter.deleteUrl),
+        Router.getUpdate("/s/{shortCode}", urlRouter.redirect),
+        Router.getQuery("/s/{shortCode}/stats", urlRouter.getStats),
+      ];
+    };
   };
 
-  transient let app = Liminal.App({
-    middleware = [RouterMiddleware.new(routerConfig)];
-    errorSerializer = Liminal.defaultJsonErrorSerializer;
-    candidRepresentationNegotiator = Liminal.defaultCandidRepresentationNegotiator;
-    logger = Liminal.buildDebugLogger(#info);
-  });
+  func buildApp() : Liminal.App {
+    Liminal.App({
+      middleware = [RouterMiddleware.new(routerConfig)];
+      errorSerializer = Liminal.defaultJsonErrorSerializer;
+      candidRepresentationNegotiator = Liminal.defaultCandidRepresentationNegotiator;
+      logger = Liminal.buildDebugLogger(#info);
+    });
+  };
 
   public query func http_request(request : Liminal.RawQueryHttpRequest) : async Liminal.RawQueryHttpResponse {
     app.http_request(request);
