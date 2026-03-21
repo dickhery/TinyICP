@@ -30,7 +30,8 @@ const getBaseUrl = (raw = true) => {
     return `http://${localHost}.localhost:${port}`;
   }
 
-  return `https://${canisterId}.ic0.app`;
+  const icHost = raw ? `${canisterId}.raw` : canisterId;
+  return `https://${icHost}.icp0.io`;
 };
 
 const unwrapResult = (result, action) => {

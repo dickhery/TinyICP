@@ -255,10 +255,10 @@ For production deployment:
 
 ```bash
 # Backend available at:
-https://{canister-id}.ic0.app
+https://{canister-id}.icp0.io
 
 # Redirects work at:
-https://{canister-id}.ic0.app/s/{shortCode}
+https://{canister-id}.icp0.io/s/{shortCode}
 ```
 
 ## Contributing
