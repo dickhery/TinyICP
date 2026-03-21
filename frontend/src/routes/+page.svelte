@@ -25,6 +25,8 @@
     let customSlug = "";
     let copiedShortUrl = "";
     let copiedWalletValue = "";
+    let showPurchaseModal = false;
+    let pendingRequest = null;
 
     function getBackendBaseUrl(raw = true) {
         const canisterIdAndRaw = raw ? `${canisterId}.raw` : canisterId;
@@ -177,16 +179,53 @@
             return;
         }
 
+        if (!authenticated) {
+            error = "Please authenticate with Internet Identity before creating a short URL.";
+            return;
+        }
+
+        error = "";
+        pendingRequest = {
+            originalUrl: newUrl.trim(),
+            customSlug: customSlug.trim() || null
+        };
+        showPurchaseModal = true;
+    }
+
+    function cancelPurchase() {
+        showPurchaseModal = false;
+        pendingRequest = null;
+    }
+
+    async function confirmPurchase() {
+        if (!pendingRequest) {
+            showPurchaseModal = false;
+            return;
+        }
+
         loading = true;
         error = "";
+
         try {
+            const latestWallet = await UrlApi.getWalletInfo();
+            wallet = latestWallet;
+
+            if (latestWallet.balanceE8s < latestWallet.tinyUrlPriceE8s + latestWallet.transferFeeE8s) {
+                throw new Error(
+                    `You need at least ${formatIcp(latestWallet.tinyUrlPriceE8s + latestWallet.transferFeeE8s)} ICP in your in-app wallet to cover the 1.0 ICP purchase and ledger fee.`
+                );
+            }
+
             const shortenedUrl = await UrlApi.createShortUrl(
-                newUrl,
-                customSlug || null
+                pendingRequest.originalUrl,
+                pendingRequest.customSlug
             );
             urls = [shortenedUrl, ...urls];
             newUrl = "";
             customSlug = "";
+            showPurchaseModal = false;
+            pendingRequest = null;
+            await loadWallet();
 
             const shortCode = shortenedUrl.shortCode;
             const fullShortUrl = getPublicShortUrl(shortCode);
@@ -305,6 +344,16 @@
     function clearSuccess() {
         successMessage = "";
     }
+
+    $: purchasePriceIcp = wallet
+        ? formatIcp(wallet.tinyUrlPriceE8s)
+        : formatIcp(100_000_000);
+    $: ledgerFeeIcp = wallet
+        ? formatIcp(wallet.transferFeeE8s)
+        : formatIcp(10_000);
+    $: totalRequiredIcp = wallet
+        ? formatIcp(wallet.tinyUrlPriceE8s + wallet.transferFeeE8s)
+        : formatIcp(100_010_000);
 
     function formatDate(timestamp) {
         const milliseconds = Math.floor(timestamp / 1000000);
@@ -471,6 +520,13 @@
                                 your authenticated principal.
                             </small>
                         </div>
+                        <div class="wallet-card full">
+                            <span class="wallet-label">Tiny URL payment account ID</span>
+                            <code>{wallet.paymentTargetAccountId}</code>
+                            <small>
+                                Each new short URL transfers 1.0 ICP to this destination before creation succeeds.
+                            </small>
+                        </div>
                     </div>
                 {:else}
                     <div class="wallet-status warning">
@@ -544,6 +600,44 @@
                     </div>
                 </form>
             </div>
+
+
+            {#if showPurchaseModal}
+                <div class="modal-backdrop" role="presentation">
+                    <div
+                        class="confirm-modal"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="purchase-modal-title"
+                    >
+                        <p class="auth-kicker">Purchase confirmation</p>
+                        <h2 id="purchase-modal-title">Confirm Tiny URL purchase</h2>
+                        <p>
+                            Creating this short URL will transfer <strong>{purchasePriceIcp} ICP</strong>
+                            from your in-app wallet to the Tiny ICP payment account before the link is created.
+                        </p>
+                        <div class="wallet-status">
+                            <div><strong>Long URL:</strong> {pendingRequest?.originalUrl}</div>
+                            <div>
+                                <strong>Custom short code:</strong>
+                                {pendingRequest?.customSlug || "Auto-generate one for me"}
+                            </div>
+                            <div><strong>Price:</strong> {purchasePriceIcp} ICP</div>
+                            <div><strong>Ledger fee:</strong> {ledgerFeeIcp} ICP</div>
+                            <div><strong>Wallet balance:</strong> {wallet ? `${formatIcp(wallet.balanceE8s)} ICP` : "Loading..."}</div>
+                            <div><strong>Needed to proceed:</strong> {totalRequiredIcp} ICP</div>
+                        </div>
+                        <div class="action-row modal-actions">
+                            <button type="button" class="refresh-btn" on:click={cancelPurchase} disabled={loading}>
+                                Cancel
+                            </button>
+                            <button type="button" class="shorten-btn" on:click={confirmPurchase} disabled={loading}>
+                                {loading ? "Processing payment..." : `Confirm & Pay ${purchasePriceIcp} ICP`}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            {/if}
 
             <div class="urls-section">
                 <div class="section-header">

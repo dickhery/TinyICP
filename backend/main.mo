@@ -39,9 +39,24 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
 
   public shared ({ caller }) func create_my_url(request : UrlStore.CreateRequest) : async Result.Result<UrlStore.UrlView, Text> {
     assertAuthenticated(caller);
-    switch (urlStore.create(request, caller)) {
-      case (#ok(url)) #ok(urlStore.toView(url));
-      case (#err(message)) #err(message);
+
+    switch (urlStore.validateCreateRequest(request)) {
+      case (#err(message)) {
+        return #err(message);
+      };
+      case (#ok(())) {};
+    };
+
+    switch (await IcpLedger.chargeForUrl(canisterPrincipal, caller)) {
+      case (#err(message)) {
+        #err("Payment required before Tiny ICP can create your short URL. " # message);
+      };
+      case (#ok(())) {
+        switch (urlStore.create(request, caller)) {
+          case (#ok(url)) #ok(urlStore.toView(url));
+          case (#err(message)) #err(message);
+        };
+      };
     };
   };
 

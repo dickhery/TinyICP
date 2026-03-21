@@ -36,7 +36,8 @@ const idlFactory = ({ IDL }) => {
     subaccountHex: IDL.Text,
     balanceE8s: IDL.Nat,
     transferFeeE8s: IDL.Nat,
-    tinyUrlPriceE8s: IDL.Nat
+    tinyUrlPriceE8s: IDL.Nat,
+    paymentTargetAccountId: IDL.Text
   });
   const ResultUrl = IDL.Variant({ ok: UrlView, err: IDL.Text });
   const ResultUnit = IDL.Variant({ ok: IDL.Null, err: IDL.Text });

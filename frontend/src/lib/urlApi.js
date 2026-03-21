@@ -54,7 +54,8 @@ const normalizeWallet = (wallet) => ({
   canisterPrincipal: wallet.canisterPrincipal.toText(),
   balanceE8s: Number(wallet.balanceE8s),
   transferFeeE8s: Number(wallet.transferFeeE8s),
-  tinyUrlPriceE8s: Number(wallet.tinyUrlPriceE8s)
+  tinyUrlPriceE8s: Number(wallet.tinyUrlPriceE8s),
+  paymentTargetAccountId: wallet.paymentTargetAccountId
 });
 
 export const formatIcp = (e8s) => (Number(e8s) / 100_000_000).toFixed(2);
