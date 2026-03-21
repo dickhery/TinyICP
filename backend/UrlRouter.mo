@@ -162,39 +162,19 @@ module {
     func generateRedirectHtml(shortCode : Text, originalUrl : Text, metadata : ?UrlStore.UrlMetadata) : Text {
       let escapedOriginalUrl = escapeHtml(originalUrl);
       let title = switch (metadata) {
-        case (?data) {
-          switch (data.title) {
-            case (?value) if (value != "") value;
-            case _ "TinyICP Short Link - " # shortCode;
-          };
-        };
+        case (?data) chooseText(data.title, "TinyICP Short Link - " # shortCode);
         case null "TinyICP Short Link - " # shortCode;
       };
       let description = switch (metadata) {
-        case (?data) {
-          switch (data.description) {
-            case (?value) if (value != "") value;
-            case _ "Shortened with TinyICP on the Internet Computer. Original: " # originalUrl;
-          };
-        };
+        case (?data) chooseText(data.description, "Shortened with TinyICP on the Internet Computer. Original: " # originalUrl);
         case null "Shortened with TinyICP on the Internet Computer. Original: " # originalUrl;
       };
       let siteName = switch (metadata) {
-        case (?data) {
-          switch (data.siteName) {
-            case (?value) if (value != "") value;
-            case _ "TinyICP";
-          };
-        };
+        case (?data) chooseText(data.siteName, "TinyICP");
         case null "TinyICP";
       };
       let canonicalUrl = switch (metadata) {
-        case (?data) {
-          switch (data.canonicalUrl) {
-            case (?value) if (value != "") value;
-            case _ originalUrl;
-          };
-        };
+        case (?data) chooseText(data.canonicalUrl, originalUrl);
         case null originalUrl;
       };
       let escapedTitle = escapeHtml(title);
@@ -204,12 +184,16 @@ module {
       let imageMeta = switch (metadata) {
         case (?data) {
           switch (data.imageUrl) {
-            case (?value) if (value != "") {
-              let escapedImageUrl = escapeHtml(value);
-              "    <meta property=\"og:image\" content=\"" # escapedImageUrl # "\">\n" #
-              "    <meta name=\"twitter:image\" content=\"" # escapedImageUrl # "\">\n";
+            case (?value) {
+              if (value != "") {
+                let escapedImageUrl = escapeHtml(value);
+                "    <meta property=\"og:image\" content=\"" # escapedImageUrl # "\">\n" #
+                "    <meta name=\"twitter:image\" content=\"" # escapedImageUrl # "\">\n";
+              } else {
+                "";
+              };
             };
-            case _ "";
+            case null "";
           };
         };
         case null "";
@@ -248,6 +232,19 @@ module {
       "    <script>setTimeout(() => { window.location.replace('" # escapeJsString(originalUrl) # "'); }, 300);</script>\n" #
       "</body>\n" #
       "</html>";
+    };
+
+    func chooseText(candidate : ?Text, fallback : Text) : Text {
+      switch (candidate) {
+        case (?value) {
+          if (value != "") {
+            value;
+          } else {
+            fallback;
+          };
+        };
+        case null fallback;
+      };
     };
 
     func escapeHtml(value : Text) : Text {
