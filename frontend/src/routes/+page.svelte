@@ -1,7 +1,7 @@
 <script>
     import "../index.scss";
     import { onMount } from "svelte";
-    import UrlApi from "$lib/urlApi.js";
+    import UrlApi, { formatIcp } from "$lib/urlApi.js";
     import { canisterId } from "$lib/canisters.js";
     import {
         getPrincipalText,
@@ -12,7 +12,10 @@
     import { resetBackendActor } from "$lib/backendActor.js";
 
     let urls = [];
+    let wallet = null;
     let loading = false;
+    let walletLoading = false;
+    let walletError = "";
     let authLoading = true;
     let authenticated = false;
     let principal = "";
@@ -21,8 +24,9 @@
     let newUrl = "";
     let customSlug = "";
     let copiedShortUrl = "";
+    let copiedWalletValue = "";
 
-    function getBaseUrl(raw = true) {
+    function getBackendBaseUrl(raw = true) {
         const canisterIdAndRaw = raw ? `${canisterId}.raw` : canisterId;
 
         if (typeof window === "undefined") {
@@ -44,7 +48,7 @@
     }
 
     $: curlCommand = (() => {
-        const baseUrl = getBaseUrl();
+        const baseUrl = getBackendBaseUrl();
 
         if (!newUrl.trim()) {
             return `curl '${baseUrl}/shorten' \\
@@ -76,13 +80,16 @@
             principal = authenticated ? await getPrincipalText() : "";
 
             if (authenticated) {
-                await loadUrls();
+                await Promise.all([loadUrls(), loadWallet()]);
             } else {
                 urls = [];
+                wallet = null;
             }
         } catch (err) {
             authenticated = false;
             principal = "";
+            wallet = null;
+            walletError = "";
             error = "Failed to initialize authentication: " + err.message;
         } finally {
             authLoading = false;
@@ -107,6 +114,25 @@
         }
     }
 
+    async function loadWallet() {
+        if (!authenticated) {
+            wallet = null;
+            return;
+        }
+
+        walletLoading = true;
+        walletError = "";
+        try {
+            wallet = await UrlApi.getWalletInfo();
+        } catch (err) {
+            wallet = null;
+            walletError = "Failed to load wallet: " + err.message;
+            console.error("Error loading wallet:", err);
+        } finally {
+            walletLoading = false;
+        }
+    }
+
     async function handleLogin() {
         authLoading = true;
         error = "";
@@ -128,6 +154,8 @@
             authenticated = false;
             principal = "";
             urls = [];
+            wallet = null;
+            walletError = "";
             showSuccess("Signed out successfully");
         } catch (err) {
             error = "Failed to sign out: " + err.message;
@@ -161,7 +189,7 @@
             customSlug = "";
 
             const shortCode = shortenedUrl.shortCode;
-            const fullShortUrl = UrlApi.getShortUrl(shortCode);
+            const fullShortUrl = getPublicShortUrl(shortCode);
             showSuccess(`[>] Short URL created: ${fullShortUrl}`);
         } catch (err) {
             error = "Failed to shorten URL: " + err.message;
@@ -194,19 +222,57 @@
         }
     }
 
-    function copyToClipboard(text) {
-        navigator.clipboard
-            .writeText(text)
-            .then(() => {
-                copiedShortUrl = text;
-                showSuccess(`[C] Copied to clipboard: ${text}`);
-                setTimeout(() => {
-                    copiedShortUrl = "";
-                }, 2000);
-            })
-            .catch(() => {
-                error = "Failed to copy to clipboard";
-            });
+    function getPublicShortUrl(shortCode) {
+        if (typeof window === "undefined") {
+            return `/s/${shortCode}`;
+        }
+
+        return `${window.location.origin}/s/${shortCode}`;
+    }
+
+    function copyWithExecCommand(text) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.setAttribute("readonly", "");
+        textArea.style.position = "fixed";
+        textArea.style.opacity = "0";
+        textArea.style.pointerEvents = "none";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        textArea.setSelectionRange(0, text.length);
+
+        try {
+            return document.execCommand("copy");
+        } finally {
+            document.body.removeChild(textArea);
+        }
+    }
+
+    async function copyToClipboard(text) {
+        error = "";
+
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(text);
+            } else if (!copyWithExecCommand(text)) {
+                throw new Error("execCommand copy failed");
+            }
+        } catch (clipboardError) {
+            if (!copyWithExecCommand(text)) {
+                console.error("Clipboard copy failed:", clipboardError);
+                error = "Failed to copy to clipboard. Please copy it manually.";
+                return;
+            }
+        }
+
+        copiedShortUrl = text;
+        copiedWalletValue = text;
+        showSuccess(`[C] Copied to clipboard: ${text}`);
+        setTimeout(() => {
+            copiedShortUrl = "";
+            copiedWalletValue = "";
+        }, 2000);
     }
 
     function openUrl(url) {
@@ -335,6 +401,86 @@
                 >
             </div>
 
+            <div class="wallet-section">
+                <div class="section-header">
+                    <h2>In-App ICP Wallet</h2>
+                    <button
+                        on:click={loadWallet}
+                        disabled={walletLoading}
+                        class="refresh-btn"
+                    >
+                        {walletLoading ? "Refreshing..." : "Refresh Wallet"}
+                    </button>
+                </div>
+                <p class="wallet-help">
+                    Your Tiny ICP wallet shows the canister principal, deposit
+                    account ID, derived subaccount, and current ICP balance for
+                    your authenticated identity.
+                </p>
+                {#if walletLoading && !wallet}
+                    <div class="wallet-status">Loading your wallet details...</div>
+                {:else if wallet}
+                    <div class="wallet-grid">
+                        <div class="wallet-card">
+                            <span class="wallet-label">Available balance</span>
+                            <strong>{formatIcp(wallet.balanceE8s)} ICP</strong>
+                            <small>
+                                Deposit ICP into your account ID below to fund
+                                this wallet.
+                            </small>
+                        </div>
+                        <div class="wallet-card">
+                            <span class="wallet-label">Canister principal (PID)</span>
+                            <code>{wallet.canisterPrincipal}</code>
+                            <small>
+                                This canister principal owns your derived
+                                deposit account.
+                            </small>
+                            <button
+                                class="copy-btn small"
+                                class:copied={copiedWalletValue === wallet.canisterPrincipal}
+                                on:click={() => copyToClipboard(wallet.canisterPrincipal)}
+                            >
+                                {copiedWalletValue === wallet.canisterPrincipal
+                                    ? "Copied ✓"
+                                    : "Copy PID"}
+                            </button>
+                        </div>
+                        <div class="wallet-card full">
+                            <span class="wallet-label">Deposit account ID</span>
+                            <code>{wallet.depositAccountId}</code>
+                            <small>
+                                Send ICP to this account ID to fund your Tiny ICP
+                                wallet balance.
+                            </small>
+                            <button
+                                class="copy-btn small"
+                                class:copied={copiedWalletValue === wallet.depositAccountId}
+                                on:click={() => copyToClipboard(wallet.depositAccountId)}
+                            >
+                                {copiedWalletValue === wallet.depositAccountId
+                                    ? "Copied ✓"
+                                    : "Copy Account ID"}
+                            </button>
+                        </div>
+                        <div class="wallet-card full">
+                            <span class="wallet-label">Wallet subaccount</span>
+                            <code>{wallet.subaccountHex}</code>
+                            <small>
+                                This subaccount is deterministically derived from
+                                your authenticated principal.
+                            </small>
+                        </div>
+                    </div>
+                {:else}
+                    <div class="wallet-status warning">
+                        <strong>Wallet unavailable.</strong>
+                        <div>{walletError || "We could not load your wallet details yet."}</div>
+                        <small>Use Refresh Wallet to try again.</small>
+                    </div>
+                {/if}
+            </div>
+
             <div class="shorten-section">
                 <form on:submit|preventDefault={shortenUrl} class="shorten-form">
                     <div class="form-field">
@@ -425,21 +571,21 @@
                                             <button
                                                 class="copy-btn small"
                                                 class:copied={copiedShortUrl ===
-                                                    UrlApi.getShortUrl(url.shortCode)}
+                                                    getPublicShortUrl(url.shortCode)}
                                                 on:click={() =>
                                                     copyToClipboard(
-                                                        UrlApi.getShortUrl(url.shortCode)
+                                                        getPublicShortUrl(url.shortCode)
                                                     )}
                                             >
                                                 {copiedShortUrl ===
-                                                UrlApi.getShortUrl(url.shortCode)
+                                                getPublicShortUrl(url.shortCode)
                                                     ? "Copied ✓"
                                                     : "Copy Url"}
                                             </button>
                                             <button
                                                 class="visit-btn"
                                                 on:click={() =>
-                                                    openUrl(UrlApi.getShortUrl(url.shortCode))}
+                                                    openUrl(getPublicShortUrl(url.shortCode))}
                                             >
                                                 ↗
                                             </button>
@@ -457,11 +603,11 @@
                                         <p class="short-url">
                                             <strong>Short:</strong>
                                             <a
-                                                href={UrlApi.getShortUrl(url.shortCode)}
+                                                href={getPublicShortUrl(url.shortCode)}
                                                 target="_blank"
                                                 rel="noopener"
                                             >
-                                                {UrlApi.getShortUrl(url.shortCode)}
+                                                {getPublicShortUrl(url.shortCode)}
                                             </a>
                                         </p>
                                         <p class="original-url">

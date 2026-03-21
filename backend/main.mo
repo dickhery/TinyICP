@@ -1,6 +1,7 @@
 import Liminal "mo:liminal";
 import RouterMiddleware "mo:liminal/Middleware/Router";
 import Router "mo:liminal/Router";
+import IcpLedger "IcpLedger";
 import UrlRouter "UrlRouter";
 import UrlStore "UrlStore";
 import BTree "mo:stableheapbtreemap/BTree";
@@ -16,6 +17,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
 
   transient var urlStore = UrlStore.Store(urlStableData);
   transient let urlRouter = UrlRouter.Router(urlStore);
+  transient let canisterPrincipal = Principal.fromActor(self);
 
   system func preupgrade() {
     urlStableData := urlStore.toStableData();
@@ -28,6 +30,11 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
   public shared query ({ caller }) func list_my_urls() : async [UrlStore.UrlView] {
     assertAuthenticated(caller);
     urlStore.getUrlsByOwner(caller);
+  };
+
+  public shared ({ caller }) func get_wallet_info() : async IcpLedger.WalletInfo {
+    assertAuthenticated(caller);
+    await IcpLedger.getWalletInfo(canisterPrincipal, caller);
   };
 
   public shared ({ caller }) func create_my_url(request : UrlStore.CreateRequest) : async Result.Result<UrlStore.UrlView, Text> {

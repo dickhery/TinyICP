@@ -49,11 +49,26 @@ const normalizeUrl = (url) => ({
   createdAt: Number(url.createdAt)
 });
 
+const normalizeWallet = (wallet) => ({
+  ...wallet,
+  canisterPrincipal: wallet.canisterPrincipal.toText(),
+  balanceE8s: Number(wallet.balanceE8s),
+  transferFeeE8s: Number(wallet.transferFeeE8s),
+  tinyUrlPriceE8s: Number(wallet.tinyUrlPriceE8s)
+});
+
+export const formatIcp = (e8s) => (Number(e8s) / 100_000_000).toFixed(2);
+
 export class UrlApi {
   static async getAllUrls() {
     const actor = await getBackendActor();
     const urls = await actor.list_my_urls();
     return urls.map(normalizeUrl);
+  }
+
+  static async getWalletInfo() {
+    const actor = await getBackendActor();
+    return normalizeWallet(await actor.get_wallet_info());
   }
 
   static async createShortUrl(originalUrl, customSlug = null) {
