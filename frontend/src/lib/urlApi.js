@@ -1,33 +1,33 @@
-import { building } from '$app/environment';
-import { canisterId } from './canisters.js';
-import { getBackendActor } from './backendActor.js';
+import { building } from "$app/environment";
+import { canisterId } from "./canisters.js";
+import { getBackendActor } from "./backendActor.js";
 
 const getHostEnvironment = () => {
-  if (typeof window === 'undefined') {
-    return { kind: 'local', port: '4943' };
+  if (typeof window === "undefined") {
+    return { kind: "local", port: "4943" };
   }
 
   const { hostname, port } = window.location;
   const isLocalHost =
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    hostname.endsWith('.localhost');
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.endsWith(".localhost");
 
   return {
-    kind: isLocalHost ? 'local' : 'ic',
-    port: port || '4943'
+    kind: isLocalHost ? "local" : "ic",
+    port: port || "4943",
   };
 };
 
 const getBaseUrl = (raw = true) => {
-  if (building || process.env.NODE_ENV === 'test') {
-    return '/';
+  if (building || process.env.NODE_ENV === "test") {
+    return "/";
   }
 
   const { kind, port } = getHostEnvironment();
   const canisterIdAndRaw = raw ? `${canisterId}.raw` : canisterId;
 
-  if (kind === 'local') {
+  if (kind === "local") {
     return `http://${canisterIdAndRaw}.localhost:${port}`;
   }
 
@@ -35,7 +35,7 @@ const getBaseUrl = (raw = true) => {
 };
 
 const unwrapResult = (result, action) => {
-  if ('ok' in result) {
+  if ("ok" in result) {
     return result.ok;
   }
 
@@ -46,7 +46,7 @@ const normalizeUrl = (url) => ({
   ...url,
   id: Number(url.id),
   clicks: Number(url.clicks),
-  createdAt: Number(url.createdAt)
+  createdAt: Number(url.createdAt),
 });
 
 const normalizeWallet = (wallet) => ({
@@ -55,10 +55,21 @@ const normalizeWallet = (wallet) => ({
   balanceE8s: Number(wallet.balanceE8s),
   transferFeeE8s: Number(wallet.transferFeeE8s),
   tinyUrlPriceE8s: Number(wallet.tinyUrlPriceE8s),
-  paymentTargetAccountId: wallet.paymentTargetAccountId
+  paymentTargetAccountId: wallet.paymentTargetAccountId,
 });
 
-export const formatIcp = (e8s) => (Number(e8s) / 100_000_000).toFixed(2);
+export const formatIcp = (e8s) => {
+  const value = Number(e8s) / 100_000_000;
+
+  if (value === 0) {
+    return '0.0000';
+  }
+
+  return value
+    .toFixed(4)
+    .replace(/(\.\d*?[1-9])0+$/, '$1')
+    .replace(/\.0+$/, '');
+};
 
 export class UrlApi {
   static async getAllUrls() {
@@ -74,42 +85,45 @@ export class UrlApi {
 
   static async createShortUrl(originalUrl, customSlug = null) {
     if (!originalUrl || !originalUrl.trim()) {
-      throw new Error('Original URL is required');
+      throw new Error("Original URL is required");
     }
 
     try {
       new URL(originalUrl);
     } catch {
-      throw new Error('Invalid URL format');
+      throw new Error("Invalid URL format");
     }
 
     const actor = await getBackendActor();
     const result = await actor.create_my_url({
       originalUrl,
-      customSlug: customSlug ? [customSlug] : []
+      customSlug: customSlug ? [customSlug] : [],
     });
 
-    return normalizeUrl(unwrapResult(result, 'create short URL'));
+    return normalizeUrl(unwrapResult(result, "create short URL"));
   }
 
   static async deleteUrl(id) {
     const actor = await getBackendActor();
     const result = await actor.delete_my_url(BigInt(id));
-    unwrapResult(result, 'delete URL');
+    unwrapResult(result, "delete URL");
   }
 
   static async withdrawFromWallet(destinationAccountId, amountE8s) {
     if (!destinationAccountId || !destinationAccountId.trim()) {
-      throw new Error('Destination account ID is required');
+      throw new Error("Destination account ID is required");
     }
 
     if (!Number.isFinite(amountE8s) || amountE8s <= 0) {
-      throw new Error('Withdrawal amount must be greater than zero');
+      throw new Error("Withdrawal amount must be greater than zero");
     }
 
     const actor = await getBackendActor();
-    const result = await actor.withdraw_from_wallet(destinationAccountId.trim(), BigInt(Math.round(amountE8s)));
-    unwrapResult(result, 'withdraw ICP from wallet');
+    const result = await actor.withdraw_from_wallet(
+      destinationAccountId.trim(),
+      BigInt(Math.round(amountE8s)),
+    );
+    unwrapResult(result, "withdraw ICP from wallet");
   }
 
   static getShortUrl(shortCode) {
@@ -118,17 +132,19 @@ export class UrlApi {
 
   static async getUrlStats(shortCode) {
     const response = await fetch(`${getBaseUrl()}/s/${shortCode}/stats`, {
-      method: 'GET',
+      method: "GET",
       headers: {
-        Accept: 'application/json'
-      }
+        Accept: "application/json",
+      },
     });
 
     if (!response.ok) {
       if (response.status === 404) {
         throw new Error(`Short URL ${shortCode} not found`);
       }
-      throw new Error(`Failed to fetch URL stats: ${response.status} ${response.statusText}`);
+      throw new Error(
+        `Failed to fetch URL stats: ${response.status} ${response.statusText}`,
+      );
     }
 
     return await response.json();
