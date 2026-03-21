@@ -1,8 +1,7 @@
 <script>
     import "../index.scss";
     import { onMount } from "svelte";
-    import UrlApi, { formatIcp } from "$lib/urlApi.js";
-    import { canisterId } from "$lib/canisters.js";
+    import UrlApi, { formatIcp, getBackendBaseUrl } from "$lib/urlApi.js";
     import {
         getPrincipalText,
         isAuthenticated,
@@ -25,27 +24,9 @@
     let customSlug = "";
     let copiedShortUrl = "";
     let copiedWalletValue = "";
-
-    function getBackendBaseUrl(raw = true) {
-        const canisterIdAndRaw = raw ? `${canisterId}.raw` : canisterId;
-
-        if (typeof window === "undefined") {
-            return `http://${canisterIdAndRaw}.localhost:4943`;
-        }
-
-        const hostname = window.location.hostname;
-        const port = window.location.port || "4943";
-        const isLocal =
-            hostname === "localhost" ||
-            hostname === "127.0.0.1" ||
-            hostname.endsWith(".localhost");
-
-        if (isLocal) {
-            return `http://${canisterIdAndRaw}.localhost:${port}`;
-        }
-
-        return `https://${canisterIdAndRaw}.icp0.io`;
-    }
+    let transferAccountId = "";
+    let transferAmount = "";
+    let transferLoading = false;
 
     $: curlCommand = (() => {
         const baseUrl = getBackendBaseUrl();
@@ -189,7 +170,7 @@
             customSlug = "";
 
             const shortCode = shortenedUrl.shortCode;
-            const fullShortUrl = getPublicShortUrl(shortCode);
+            const fullShortUrl = UrlApi.getShortUrl(shortCode);
             showSuccess(`[>] Short URL created: ${fullShortUrl}`);
         } catch (err) {
             error = "Failed to shorten URL: " + err.message;
@@ -223,11 +204,47 @@
     }
 
     function getPublicShortUrl(shortCode) {
-        if (typeof window === "undefined") {
-            return `/s/${shortCode}`;
+        return UrlApi.getShortUrl(shortCode);
+    }
+
+    async function transferIcp() {
+        if (!wallet) {
+            error = "Load your wallet before sending ICP.";
+            return;
         }
 
-        return `${window.location.origin}/s/${shortCode}`;
+        const destination = transferAccountId.trim();
+        if (!/^[0-9a-fA-F]{64}$/.test(destination)) {
+            error = "Enter a valid 64-character ICP account ID.";
+            return;
+        }
+
+        const amount = Number(transferAmount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            error = "Enter a valid ICP amount greater than 0.";
+            return;
+        }
+
+        const amountE8s = Math.round(amount * 100_000_000);
+        if (amountE8s <= wallet.transferFeeE8s) {
+            error = `Amount must be greater than ${formatIcp(wallet.transferFeeE8s)} ICP to cover the fee.`;
+            return;
+        }
+
+        transferLoading = true;
+        error = "";
+        try {
+            await UrlApi.sendIcp(destination, amountE8s);
+            transferAccountId = "";
+            transferAmount = "";
+            showSuccess(`[OK] Sent ${amount.toFixed(4)} ICP successfully.`);
+            await loadWallet();
+        } catch (err) {
+            error = "Failed to send ICP: " + err.message;
+            console.error("Error sending ICP:", err);
+        } finally {
+            transferLoading = false;
+        }
     }
 
     function copyWithExecCommand(text) {
@@ -413,9 +430,9 @@
                     </button>
                 </div>
                 <p class="wallet-help">
-                    Your Tiny ICP wallet shows the canister principal, deposit
-                    account ID, derived subaccount, and current ICP balance for
-                    your authenticated identity.
+                    Your Tiny ICP wallet shows your current balance, the
+                    deposit account ID for incoming ICP, and a send form for
+                    transferring ICP out to another account.
                 </p>
                 {#if walletLoading && !wallet}
                     <div class="wallet-status">Loading your wallet details...</div>
@@ -428,23 +445,6 @@
                                 Deposit ICP into your account ID below to fund
                                 this wallet.
                             </small>
-                        </div>
-                        <div class="wallet-card">
-                            <span class="wallet-label">Canister principal (PID)</span>
-                            <code>{wallet.canisterPrincipal}</code>
-                            <small>
-                                This canister principal owns your derived
-                                deposit account.
-                            </small>
-                            <button
-                                class="copy-btn small"
-                                class:copied={copiedWalletValue === wallet.canisterPrincipal}
-                                on:click={() => copyToClipboard(wallet.canisterPrincipal)}
-                            >
-                                {copiedWalletValue === wallet.canisterPrincipal
-                                    ? "Copied ✓"
-                                    : "Copy PID"}
-                            </button>
                         </div>
                         <div class="wallet-card full">
                             <span class="wallet-label">Deposit account ID</span>
@@ -464,11 +464,37 @@
                             </button>
                         </div>
                         <div class="wallet-card full">
-                            <span class="wallet-label">Wallet subaccount</span>
-                            <code>{wallet.subaccountHex}</code>
+                            <span class="wallet-label">Send ICP</span>
+                            <div class="transfer-form">
+                                <input
+                                    type="text"
+                                    bind:value={transferAccountId}
+                                    placeholder="Destination account ID"
+                                    class="form-input"
+                                    disabled={transferLoading}
+                                />
+                                <input
+                                    type="number"
+                                    bind:value={transferAmount}
+                                    min="0"
+                                    step="0.00000001"
+                                    placeholder="Amount (ICP)"
+                                    class="form-input"
+                                    disabled={transferLoading}
+                                />
+                                <button
+                                    type="button"
+                                    class="shorten-btn"
+                                    on:click={transferIcp}
+                                    disabled={transferLoading || !transferAccountId.trim() || !transferAmount}
+                                >
+                                    {transferLoading ? "Sending..." : "Send ICP"}
+                                </button>
+                            </div>
                             <small>
-                                This subaccount is deterministically derived from
-                                your authenticated principal.
+                                Transfers are sent from your derived Tiny ICP
+                                wallet and include the standard network fee of
+                                {formatIcp(wallet.transferFeeE8s)} ICP.
                             </small>
                         </div>
                     </div>

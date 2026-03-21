@@ -6,6 +6,7 @@ import UrlRouter "UrlRouter";
 import UrlStore "UrlStore";
 import BTree "mo:stableheapbtreemap/BTree";
 import Principal "mo:core@1/Principal";
+import Nat64 "mo:core@1/Nat64";
 import Runtime "mo:core@1/Runtime";
 import Result "mo:core@1/Result";
 
@@ -35,6 +36,17 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
   public shared ({ caller }) func get_wallet_info() : async IcpLedger.WalletInfo {
     assertAuthenticated(caller);
     await IcpLedger.getWalletInfo(canisterPrincipal, caller);
+  };
+
+  public shared ({ caller }) func send_icp(toAccountId : Text, amountE8s : Nat) : async Result.Result<Nat64, Text> {
+    assertAuthenticated(caller);
+
+    if (amountE8s <= IcpLedger.transferFeeE8s) {
+      return #err("Amount must be greater than the 0.0001 ICP network fee");
+    };
+
+    let ?to = IcpLedger.accountIdFromHex(toAccountId) else return #err("Invalid destination account ID");
+    await IcpLedger.transferIcp(?IcpLedger.subaccountForPrincipal(caller), to, amountE8s);
   };
 
   public shared ({ caller }) func create_my_url(request : UrlStore.CreateRequest) : async Result.Result<UrlStore.UrlView, Text> {

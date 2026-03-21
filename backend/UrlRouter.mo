@@ -25,10 +25,12 @@ module {
     };
 
     public func redirect<system>(routeContext : RouteContext.RouteContext) : Route.HttpResponse {
-      let shortCode = routeContext.getRouteParam("shortCode");
+      let shortCode = Text.trim(routeContext.getRouteParam("shortCode"), #char(' '));
+      Debug.print("Redirect lookup for shortCode: " # shortCode);
 
       switch (store.incrementClicks(shortCode)) {
         case (null) {
+          Debug.print("Short URL not found: " # shortCode);
           routeContext.buildResponse(#notFound, #error(#message("Short URL not found")));
         };
         case (?originalUrl) {
@@ -38,7 +40,7 @@ module {
               body = Text.encodeUtf8("Redirecting to " # originalUrl);
               headers = [
                 ("Location", originalUrl),
-                ("Cache-Control", "no-cache"),
+                ("Cache-Control", "no-cache, no-store"),
               ];
             }),
           );
@@ -47,10 +49,11 @@ module {
     };
 
     public func getStats(routeContext : RouteContext.RouteContext) : Route.HttpResponse {
-      let shortCode = routeContext.getRouteParam("shortCode");
+      let shortCode = Text.trim(routeContext.getRouteParam("shortCode"), #char(' '));
 
       switch (store.getUrlByShortCode(shortCode)) {
         case (null) {
+          Debug.print("Short URL not found: " # shortCode);
           routeContext.buildResponse(#notFound, #error(#message("Short URL not found")));
         };
         case (?url) {

@@ -46,7 +46,7 @@ module {
     |> BTree.entries(_)
     |> Iter.map<(Nat, Url), (Text, Nat)>(
       _,
-      func((_, url) : (Nat, Url)) : (Text, Nat) = (url.shortCode, url.id),
+      func((_, url) : (Nat, Url)) : (Text, Nat) = (normalizeShortCode(url.shortCode), url.id),
     )
     |> Map.fromIter<Text, Nat>(_, Text.compare);
 
@@ -76,14 +76,16 @@ module {
     };
 
     public func getUrlByShortCode(shortCode : Text) : ?Url {
-      let ?id = Map.get(slugToIdMap, Text.compare, shortCode) else return null;
+      let normalizedShortCode = normalizeShortCode(shortCode);
+      let ?id = Map.get(slugToIdMap, Text.compare, normalizedShortCode) else return null;
       BTree.get(stableData.urls, Nat.compare, id);
     };
 
     public func incrementClicks(shortCode : Text) : ?Text {
-      let ?url = getUrlByShortCode(shortCode) else return null;
+      let normalizedShortCode = normalizeShortCode(shortCode);
+      let ?url = getUrlByShortCode(normalizedShortCode) else return null;
 
-      Debug.print("Incrementing clicks for shortCode: " # shortCode # " (ID: " # Nat.toText(url.id) # "), current clicks: " # Nat.toText(url.clicks));
+      Debug.print("Incrementing clicks for shortCode: " # normalizedShortCode # " (ID: " # Nat.toText(url.id) # "), current clicks: " # Nat.toText(url.clicks));
 
       let updatedUrl : Url = {
         url with
@@ -101,13 +103,14 @@ module {
 
       let shortCode = switch (request.customSlug) {
         case (?slug) {
-          if (not isValidSlug(slug)) {
+          let normalizedSlug = normalizeShortCode(slug);
+          if (not isValidSlug(normalizedSlug)) {
             return #err("Invalid custom slug. Use only letters, numbers, hyphens, and underscores");
           };
-          if (Map.get(slugToIdMap, Text.compare, slug) != null) {
+          if (Map.get(slugToIdMap, Text.compare, normalizedSlug) != null) {
             return #err("Custom slug already exists");
           };
-          slug;
+          normalizedSlug;
         };
         case null {
           generateShortCode();
@@ -161,6 +164,10 @@ module {
 
     private func isValidUrl(url : Text) : Bool {
       Text.startsWith(url, #text("http://")) or Text.startsWith(url, #text("https://"));
+    };
+
+    private func normalizeShortCode(shortCode : Text) : Text {
+      Text.trim(shortCode, #char(' '));
     };
 
     private func isValidSlug(slug : Text) : Bool {

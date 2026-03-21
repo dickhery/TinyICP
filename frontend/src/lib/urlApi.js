@@ -25,13 +25,12 @@ const getBaseUrl = (raw = true) => {
   }
 
   const { kind, port } = getHostEnvironment();
-  const canisterIdAndRaw = raw ? `${canisterId}.raw` : canisterId;
-
   if (kind === 'local') {
-    return `http://${canisterIdAndRaw}.localhost:${port}`;
+    const localHost = raw ? `${canisterId}.raw` : canisterId;
+    return `http://${localHost}.localhost:${port}`;
   }
 
-  return `https://${canisterIdAndRaw}.icp0.io`;
+  return `https://${canisterId}.ic0.app`;
 };
 
 const unwrapResult = (result, action) => {
@@ -56,6 +55,8 @@ const normalizeWallet = (wallet) => ({
   transferFeeE8s: Number(wallet.transferFeeE8s),
   tinyUrlPriceE8s: Number(wallet.tinyUrlPriceE8s)
 });
+
+export const getBackendBaseUrl = (raw = true) => getBaseUrl(raw);
 
 export const formatIcp = (e8s) => (Number(e8s) / 100_000_000).toFixed(2);
 
@@ -98,7 +99,13 @@ export class UrlApi {
   }
 
   static getShortUrl(shortCode) {
-    return `${getBaseUrl(false)}/s/${shortCode}`;
+    return `${getBaseUrl(false)}/s/${shortCode.trim()}`;
+  }
+
+  static async sendIcp(toAccountId, amountE8s) {
+    const actor = await getBackendActor();
+    const result = await actor.send_icp(toAccountId.trim(), BigInt(amountE8s));
+    return unwrapResult(result, 'send ICP');
   }
 
   static async getUrlStats(shortCode) {

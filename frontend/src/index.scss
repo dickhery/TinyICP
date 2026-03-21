@@ -1046,3 +1046,15 @@ button[type="submit"] {
   border-color: #ffcc00;
   color: #ffe88a;
 }
+
+
+.transfer-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.transfer-form .shorten-btn {
+  justify-self: start;
+}
