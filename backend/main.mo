@@ -10,8 +10,10 @@ import Runtime "mo:core@1/Runtime";
 import Result "mo:core@1/Result";
 import Blob "mo:core@1/Blob";
 import Text "mo:core@1/Text";
+import Debug "mo:core@1/Debug";
 import Iter "mo:core@1/Iter";
 import Char "mo:core@1/Char";
+import Nat32 "mo:core@1/Nat32";
 import Nat64 "mo:core@1/Nat64";
 import Error "mo:base/Error";
 import ExperimentalCycles "mo:base/ExperimentalCycles";
@@ -186,7 +188,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
         ?metadata;
       };
     } catch (error) {
-      Runtime.print("Failed to fetch preview metadata for " # originalUrl # ": " # Error.message(error));
+      Debug.print("Failed to fetch preview metadata for " # originalUrl # ": " # Error.message(error));
       null;
     };
   };
@@ -264,7 +266,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
   };
 
   func extractMetaContent(html : Text, attributeName : Text, attributeValue : Text) : ?Text {
-    let lowerHtml = Text.toLowercase(html);
+    let lowerHtml = toLowerAscii(html);
     let marker = "<meta";
     var searchStart = 0;
 
@@ -279,9 +281,9 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
           };
           let length = endIndex - index + 1;
           let tag = sliceText(html, index, length);
-          let lowerTag = Text.toLowercase(tag);
-          let attrNeedle = attributeName # "=\"" # Text.toLowercase(attributeValue) # "\"";
-          let attrNeedleSingle = attributeName # "='" # Text.toLowercase(attributeValue) # "'";
+          let lowerTag = toLowerAscii(tag);
+          let attrNeedle = attributeName # "=\"" # toLowerAscii(attributeValue) # "\"";
+          let attrNeedleSingle = attributeName # "='" # toLowerAscii(attributeValue) # "'";
           if (Text.contains(lowerTag, #text(attrNeedle)) or Text.contains(lowerTag, #text(attrNeedleSingle))) {
             return firstSome([
               extractAttribute(tag, "content"),
@@ -295,7 +297,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
   };
 
   func extractLinkHref(html : Text, relValue : Text) : ?Text {
-    let lowerHtml = Text.toLowercase(html);
+    let lowerHtml = toLowerAscii(html);
     let marker = "<link";
     var searchStart = 0;
 
@@ -310,9 +312,9 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
           };
           let length = endIndex - index + 1;
           let tag = sliceText(html, index, length);
-          let lowerTag = Text.toLowercase(tag);
-          let relNeedle = "rel=\"" # Text.toLowercase(relValue) # "\"";
-          let relNeedleSingle = "rel='" # Text.toLowercase(relValue) # "'";
+          let lowerTag = toLowerAscii(tag);
+          let relNeedle = "rel=\"" # toLowerAscii(relValue) # "\"";
+          let relNeedleSingle = "rel='" # toLowerAscii(relValue) # "'";
           if (Text.contains(lowerTag, #text(relNeedle)) or Text.contains(lowerTag, #text(relNeedleSingle))) {
             return extractAttribute(tag, "href");
           };
@@ -323,7 +325,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
   };
 
   func extractTitle(html : Text) : ?Text {
-    let lowerHtml = Text.toLowercase(html);
+    let lowerHtml = toLowerAscii(html);
     let ?start = findFrom(lowerHtml, "<title>", 0) else return null;
     let contentStart = start + 7;
     let ?end = findFrom(lowerHtml, "</title>", contentStart) else return null;
@@ -332,7 +334,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
   };
 
   func extractAttribute(tag : Text, attributeName : Text) : ?Text {
-    let lowerTag = Text.toLowercase(tag);
+    let lowerTag = toLowerAscii(tag);
     let doubleNeedle = attributeName # "=\"";
     switch (findFrom(lowerTag, doubleNeedle, 0)) {
       case (?start) {
@@ -406,6 +408,19 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     char == ' ' or char == '\n' or char == '\r' or char == '\t';
   };
 
+  func toLowerAscii(value : Text) : Text {
+    var result = "";
+    for (char in value.chars()) {
+      let code = Char.toNat32(char);
+      if (code >= 65 and code <= 90) {
+        result := result # Text.fromChar(Char.fromNat32(code + 32));
+      } else {
+        result := result # Text.fromChar(char);
+      };
+    };
+    result;
+  };
+
   func decodeHtmlEntities(value : Text) : Text {
     value
     |> Text.replace(_, #text("&amp;"), "&")
@@ -436,11 +451,13 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
 
     let haystackChars = Blob.toArray(Text.encodeUtf8(haystack));
     let needleChars = Blob.toArray(Text.encodeUtf8(needle));
-    if (needleChars.size() > haystackChars.size() or start >= haystackChars.size()) {
+    let haystackSize = haystackChars.size();
+    let needleSize = needleChars.size();
+    if (needleSize > haystackSize or start >= haystackSize) {
       return null;
     };
 
-    let lastStart = haystackChars.size() - needleChars.size();
+    let lastStart = haystackSize - needleSize;
     var index = start;
     while (index <= lastStart) {
       var matched = true;
