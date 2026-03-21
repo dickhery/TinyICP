@@ -2,6 +2,7 @@ import Array "mo:core@1/Array";
 import Blob "mo:core@1/Blob";
 import Char "mo:core@1/Char";
 import Debug "mo:core@1/Debug";
+import Runtime "mo:core@1/Runtime";
 import Int "mo:core@1/Int";
 import Iter "mo:core@1/Iter";
 import Nat "mo:core@1/Nat";
@@ -99,7 +100,7 @@ module {
   };
 
   public func chargeForUrl(canisterPrincipal : Principal, user : Principal) : async Result.Result<(), Text> {
-    transferFromWallet(canisterPrincipal, user, targetAccountId, tinyUrlPriceE8s, ?(tinyUrlPriceE8s + transferFeeE8s));
+    await transferFromWallet(canisterPrincipal, user, targetAccountId, tinyUrlPriceE8s, ?(tinyUrlPriceE8s + transferFeeE8s));
   };
 
   public func withdrawFromWallet(
@@ -112,7 +113,7 @@ module {
       return #err("Withdrawal amount must be greater than 0.");
     };
 
-    transferFromWallet(canisterPrincipal, user, destinationAccountId, amountE8s, ?(amountE8s + transferFeeE8s));
+    await transferFromWallet(canisterPrincipal, user, destinationAccountId, amountE8s, ?(amountE8s + transferFeeE8s));
   };
 
   func transferFromWallet(
@@ -176,7 +177,7 @@ module {
 
   func hexToBlob(hex : Text) : Blob {
     if (hex.size() != 64) {
-      Debug.trap("Account identifier must be 64 hex characters.");
+      Runtime.trap("Account identifier must be 64 hex characters.");
     };
 
     let chars = hex.chars() |> Iter.toArray(_);
@@ -196,7 +197,7 @@ module {
     } else if (code >= 97 and code <= 102) {
       Nat8.fromNat(Nat32.toNat(code - 87));
     } else {
-      Debug.trap("Invalid hex character in account identifier.");
+      Runtime.trap("Invalid hex character in account identifier.");
     };
   };
 };
