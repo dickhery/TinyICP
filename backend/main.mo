@@ -248,17 +248,18 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     let parts = Text.split(url, #char('/'));
     var index = 0;
     var origin = "";
-    label loop for (part in parts) {
-      if (index == 0) {
-        origin := part;
-      } else if (index == 1) {
-        origin := origin # "/" # part;
-      } else if (index == 2) {
-        origin := origin # "/" # part;
-        break loop;
+
+    for (part in parts) {
+      if (index < 3) {
+        if (index == 0) {
+          origin := part;
+        } else {
+          origin := origin # "/" # part;
+        };
       };
       index += 1;
     };
+
     origin;
   };
 
