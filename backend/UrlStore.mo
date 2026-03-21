@@ -38,6 +38,10 @@ module {
     customSlug : ?Text;
   };
 
+  private func normalizeShortCode(shortCode : Text) : Text {
+    Text.trim(shortCode, #char(' '));
+  };
+
   public class Store(stableData : StableData) = self {
 
     var nextId = stableData.nextId;
@@ -141,7 +145,7 @@ module {
       };
 
       ignore BTree.delete(stableData.urls, Nat.compare, id);
-      ignore Map.delete(slugToIdMap, Text.compare, url.shortCode);
+      ignore Map.delete(slugToIdMap, Text.compare, normalizeShortCode(url.shortCode));
       #ok(());
     };
 
@@ -166,9 +170,6 @@ module {
       Text.startsWith(url, #text("http://")) or Text.startsWith(url, #text("https://"));
     };
 
-    private func normalizeShortCode(shortCode : Text) : Text {
-      Text.trim(shortCode, #char(' '));
-    };
 
     private func isValidSlug(slug : Text) : Bool {
       if (slug.size() == 0 or slug.size() > 20) return false;
