@@ -80,6 +80,8 @@ This project now handles both of these cases correctly:
 
 The frontend asset CSP also explicitly allows `http://*.localhost:*` in `connect-src`, which is required when the browser talks directly to a local backend canister such as `http://<backend-canister>.raw.localhost:4943`.
 
+Generated short links also point at the backend canister's raw domain so the redirect endpoint consistently reaches the Motoko HTTP router instead of a certified asset path.
+
 ## Getting Started
 
 1. **Install dependencies**:

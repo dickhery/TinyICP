@@ -113,7 +113,7 @@ export class UrlApi {
   }
 
   static getShortUrl(shortCode) {
-    return `${getBaseUrl(false)}/s/${shortCode}`;
+    return `${getBaseUrl()}/s/${shortCode}`;
   }
 
   static async getUrlStats(shortCode) {
