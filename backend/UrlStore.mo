@@ -16,6 +16,14 @@ module {
     nextId : Nat;
   };
 
+  public type UrlMetadata = {
+    title : ?Text;
+    description : ?Text;
+    imageUrl : ?Text;
+    canonicalUrl : ?Text;
+    siteName : ?Text;
+  };
+
   public type Url = {
     id : Nat;
     originalUrl : Text;
@@ -23,6 +31,7 @@ module {
     clicks : Nat;
     createdAt : Int;
     owner : Principal;
+    metadata : ?UrlMetadata;
   };
 
   public type UrlView = {
@@ -31,6 +40,7 @@ module {
     shortCode : Text;
     clicks : Nat;
     createdAt : Int;
+    metadata : ?UrlMetadata;
   };
 
   public type CreateRequest = {
@@ -80,7 +90,7 @@ module {
       BTree.get(stableData.urls, Nat.compare, id);
     };
 
-    public func incrementClicks(shortCode : Text) : ?Text {
+    public func incrementClicks(shortCode : Text) : ?Url {
       let ?url = getUrlByShortCode(shortCode) else return null;
 
       Debug.print("Incrementing clicks for shortCode: " # shortCode # " (ID: " # Nat.toText(url.id) # "), current clicks: " # Nat.toText(url.clicks));
@@ -91,7 +101,7 @@ module {
       };
 
       ignore BTree.insert(stableData.urls, Nat.compare, url.id, updatedUrl);
-      ?url.originalUrl;
+      ?updatedUrl;
     };
 
     public func validateCreateRequest(request : CreateRequest) : Result.Result<(), Text> {
@@ -114,7 +124,7 @@ module {
       #ok(());
     };
 
-    public func create(request : CreateRequest, owner : Principal) : Result.Result<Url, Text> {
+    public func create(request : CreateRequest, owner : Principal, metadata : ?UrlMetadata) : Result.Result<Url, Text> {
       switch (validateCreateRequest(request)) {
         case (#err(message)) return #err(message);
         case (#ok(())) {};
@@ -134,6 +144,7 @@ module {
         clicks = 0;
         createdAt = Time.now();
         owner = owner;
+        metadata = metadata;
       };
 
       nextId += 1;
@@ -162,6 +173,7 @@ module {
         shortCode = url.shortCode;
         clicks = url.clicks;
         createdAt = url.createdAt;
+        metadata = url.metadata;
       };
     };
 
