@@ -1,18 +1,20 @@
-import { Actor, HttpAgent } from '@dfinity/agent';
-import { canisterId } from './canisters.js';
-import { getIdentity } from './auth.js';
+import { Actor, HttpAgent } from "@dfinity/agent";
+import { canisterId } from "./canisters.js";
+import { getIdentity } from "./auth.js";
 
 const isLocalHost = (hostname) =>
-  hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost');
+  hostname === "localhost" ||
+  hostname === "127.0.0.1" ||
+  hostname.endsWith(".localhost");
 
 const getHost = () => {
-  if (typeof window === 'undefined') {
-    return 'http://127.0.0.1:4943';
+  if (typeof window === "undefined") {
+    return "http://127.0.0.1:4943";
   }
 
   const { protocol, hostname, port } = window.location;
   if (isLocalHost(hostname)) {
-    return `http://127.0.0.1:${port || '4943'}`;
+    return `http://127.0.0.1:${port || "4943"}`;
   }
 
   return `${protocol}//${hostname}`;
@@ -21,22 +23,20 @@ const getHost = () => {
 const idlFactory = ({ IDL }) => {
   const CreateRequest = IDL.Record({
     originalUrl: IDL.Text,
-    customSlug: IDL.Opt(IDL.Text)
+    customSlug: IDL.Opt(IDL.Text),
   });
   const UrlView = IDL.Record({
     id: IDL.Nat,
     originalUrl: IDL.Text,
     shortCode: IDL.Text,
     clicks: IDL.Nat,
-    createdAt: IDL.Int
+    createdAt: IDL.Int,
   });
   const WalletInfo = IDL.Record({
-    canisterPrincipal: IDL.Principal,
     depositAccountId: IDL.Text,
-    subaccountHex: IDL.Text,
     balanceE8s: IDL.Nat,
     transferFeeE8s: IDL.Nat,
-    tinyUrlPriceE8s: IDL.Nat
+    tinyUrlPriceE8s: IDL.Nat,
   });
   const ResultUrl = IDL.Variant({ ok: UrlView, err: IDL.Text });
   const ResultUnit = IDL.Variant({ ok: IDL.Null, err: IDL.Text });
@@ -45,8 +45,13 @@ const idlFactory = ({ IDL }) => {
     create_my_url: IDL.Func([CreateRequest], [ResultUrl], []),
     delete_my_url: IDL.Func([IDL.Nat], [ResultUnit], []),
     get_wallet_info: IDL.Func([], [WalletInfo], []),
-    list_my_urls: IDL.Func([], [IDL.Vec(UrlView)], ['query']),
-    whoami: IDL.Func([], [IDL.Principal], ['query'])
+    list_my_urls: IDL.Func([], [IDL.Vec(UrlView)], ["query"]),
+    transfer_icp: IDL.Func(
+      [IDL.Text, IDL.Nat],
+      [IDL.Variant({ ok: IDL.Nat64, err: IDL.Text })],
+      [],
+    ),
+    whoami: IDL.Func([], [IDL.Principal], ["query"]),
   });
 };
 
@@ -58,7 +63,10 @@ export const getBackendActor = async () => {
       const identity = await getIdentity();
       const agent = new HttpAgent({ host: getHost(), identity });
 
-      if (typeof window !== 'undefined' && isLocalHost(window.location.hostname)) {
+      if (
+        typeof window !== "undefined" &&
+        isLocalHost(window.location.hostname)
+      ) {
         await agent.fetchRootKey();
       }
 

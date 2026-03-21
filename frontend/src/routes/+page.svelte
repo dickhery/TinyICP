@@ -25,6 +25,9 @@
     let customSlug = "";
     let copiedShortUrl = "";
     let copiedWalletValue = "";
+    let transferAccountId = "";
+    let transferAmount = "";
+    let transferring = false;
 
     function getBackendBaseUrl(raw = true) {
         const canisterIdAndRaw = raw ? `${canisterId}.raw` : canisterId;
@@ -156,6 +159,8 @@
             urls = [];
             wallet = null;
             walletError = "";
+            transferAccountId = "";
+            transferAmount = "";
             showSuccess("Signed out successfully");
         } catch (err) {
             error = "Failed to sign out: " + err.message;
@@ -320,6 +325,78 @@
         }
     }
 
+    function normalizeAccountId(value) {
+        return value.trim().toLowerCase();
+    }
+
+    function isValidAccountId(value) {
+        return /^[0-9a-f]{64}$/i.test(value.trim());
+    }
+
+    function parseIcpToE8s(value) {
+        const normalized = value.trim();
+        if (!/^\d+(\.\d{0,8})?$/.test(normalized)) {
+            return null;
+        }
+
+        const [wholePart, fractionalPart = ""] = normalized.split(".");
+        return Number(wholePart) * 100_000_000 + Number((fractionalPart + "00000000").slice(0, 8));
+    }
+
+    $: transferAmountE8s = parseIcpToE8s(transferAmount);
+    $: transferFeeIcp = wallet ? formatIcp(wallet.transferFeeE8s) : formatIcp(0);
+    $: transferCanSubmit = Boolean(
+        wallet &&
+            isValidAccountId(transferAccountId) &&
+            transferAmountE8s &&
+            transferAmountE8s > 0 &&
+            transferAmountE8s + wallet.transferFeeE8s <= wallet.balanceE8s &&
+            normalizeAccountId(transferAccountId) !==
+                normalizeAccountId(wallet.depositAccountId)
+    );
+
+    async function transferIcp() {
+        if (!wallet) {
+            error = "Wallet is not available yet. Please refresh and try again.";
+            return;
+        }
+
+        const destinationAccountId = normalizeAccountId(transferAccountId);
+        if (!isValidAccountId(destinationAccountId)) {
+            error = "Enter a valid 64-character destination account ID.";
+            return;
+        }
+
+        if (!transferAmountE8s || transferAmountE8s <= 0) {
+            error = "Enter a transfer amount greater than 0 ICP.";
+            return;
+        }
+
+        if (destinationAccountId === normalizeAccountId(wallet.depositAccountId)) {
+            error = "Destination account must be different from your Tiny ICP deposit account.";
+            return;
+        }
+
+        if (transferAmountE8s + wallet.transferFeeE8s > wallet.balanceE8s) {
+            error = `Insufficient balance. You need ${formatIcp(transferAmountE8s + wallet.transferFeeE8s)} ICP including the network fee.`;
+            return;
+        }
+
+        transferring = true;
+        error = "";
+        try {
+            const blockIndex = await UrlApi.transferIcp(destinationAccountId, transferAmountE8s);
+            showSuccess(`ICP transferred successfully in ledger block ${blockIndex}.`);
+            transferAmount = "";
+            await loadWallet();
+        } catch (err) {
+            error = "Failed to transfer ICP: " + err.message;
+            console.error("Error transferring ICP:", err);
+        } finally {
+            transferring = false;
+        }
+    }
+
     onMount(() => {
         syncAuthState();
         document.addEventListener("keydown", handleKeydown);
@@ -413,9 +490,9 @@
                     </button>
                 </div>
                 <p class="wallet-help">
-                    Your Tiny ICP wallet shows the canister principal, deposit
-                    account ID, derived subaccount, and current ICP balance for
-                    your authenticated identity.
+                    Fund your Tiny ICP wallet by sending ICP to the deposit
+                    account below, then transfer ICP back out whenever you need
+                    to.
                 </p>
                 {#if walletLoading && !wallet}
                     <div class="wallet-status">Loading your wallet details...</div>
@@ -430,21 +507,12 @@
                             </small>
                         </div>
                         <div class="wallet-card">
-                            <span class="wallet-label">Canister principal (PID)</span>
-                            <code>{wallet.canisterPrincipal}</code>
+                            <span class="wallet-label">Transfer fee</span>
+                            <strong>{transferFeeIcp} ICP</strong>
                             <small>
-                                This canister principal owns your derived
-                                deposit account.
+                                Each outgoing ICP transfer includes the ICP
+                                ledger network fee.
                             </small>
-                            <button
-                                class="copy-btn small"
-                                class:copied={copiedWalletValue === wallet.canisterPrincipal}
-                                on:click={() => copyToClipboard(wallet.canisterPrincipal)}
-                            >
-                                {copiedWalletValue === wallet.canisterPrincipal
-                                    ? "Copied ✓"
-                                    : "Copy PID"}
-                            </button>
                         </div>
                         <div class="wallet-card full">
                             <span class="wallet-label">Deposit account ID</span>
@@ -464,12 +532,49 @@
                             </button>
                         </div>
                         <div class="wallet-card full">
-                            <span class="wallet-label">Wallet subaccount</span>
-                            <code>{wallet.subaccountHex}</code>
+                            <span class="wallet-label">Transfer ICP</span>
+                            <div class="wallet-transfer-fields">
+                                <div class="form-field wallet-form-field">
+                                    <label for="transfer-account-id" class="form-label">Destination account ID</label>
+                                    <input
+                                        id="transfer-account-id"
+                                        type="text"
+                                        bind:value={transferAccountId}
+                                        placeholder="64-character ICP account ID"
+                                        class="form-input"
+                                        autocapitalize="off"
+                                        spellcheck="false"
+                                        disabled={transferring}
+                                    />
+                                </div>
+                                <div class="form-field wallet-form-field">
+                                    <label for="transfer-amount" class="form-label">Amount (ICP)</label>
+                                    <input
+                                        id="transfer-amount"
+                                        type="text"
+                                        bind:value={transferAmount}
+                                        placeholder="0.25"
+                                        inputmode="decimal"
+                                        class="form-input"
+                                        disabled={transferring}
+                                    />
+                                </div>
+                            </div>
                             <small>
-                                This subaccount is deterministically derived from
-                                your authenticated principal.
+                                You can transfer up to
+                                {formatIcp(Math.max(wallet.balanceE8s - wallet.transferFeeE8s, 0))}
+                                ICP after accounting for the {transferFeeIcp} ICP fee.
                             </small>
+                            <div class="wallet-transfer-actions">
+                                <button
+                                    class="shorten-btn wallet-transfer-btn"
+                                    type="button"
+                                    on:click={transferIcp}
+                                    disabled={!transferCanSubmit || transferring}
+                                >
+                                    {transferring ? "Sending..." : "Transfer ICP"}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 {:else}

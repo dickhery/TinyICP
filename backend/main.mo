@@ -37,6 +37,11 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     await IcpLedger.getWalletInfo(canisterPrincipal, caller);
   };
 
+  public shared ({ caller }) func transfer_icp(destinationAccountId : Text, amountE8s : Nat) : async Result.Result<Nat64, Text> {
+    assertAuthenticated(caller);
+    await IcpLedger.transferFromUserSubaccount(canisterPrincipal, caller, destinationAccountId, amountE8s);
+  };
+
   public shared ({ caller }) func create_my_url(request : UrlStore.CreateRequest) : async Result.Result<UrlStore.UrlView, Text> {
     assertAuthenticated(caller);
     switch (urlStore.create(request, caller)) {
