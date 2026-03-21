@@ -27,7 +27,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     urlStore := UrlStore.Store(urlStableData);
     urlRouter := UrlRouter.Router(urlStore);
     routerConfig := buildRouterConfig();
-    app := buildApp();
+    app := buildApp(routerConfig);
   };
 
   public shared query ({ caller }) func list_my_urls() : async [UrlStore.UrlView] {
@@ -83,10 +83,6 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     };
   };
 
-  transient var routerConfig : RouterMiddleware.Config = buildRouterConfig();
-
-  transient var app = buildApp();
-
   func buildRouterConfig() : RouterMiddleware.Config {
     {
       prefix = null;
@@ -101,14 +97,18 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     };
   };
 
-  func buildApp() : Liminal.App {
+  func buildApp(config : RouterMiddleware.Config) : Liminal.App {
     Liminal.App({
-      middleware = [RouterMiddleware.new(routerConfig)];
+      middleware = [RouterMiddleware.new(config)];
       errorSerializer = Liminal.defaultJsonErrorSerializer;
       candidRepresentationNegotiator = Liminal.defaultCandidRepresentationNegotiator;
       logger = Liminal.buildDebugLogger(#info);
     });
   };
+
+  transient var routerConfig : RouterMiddleware.Config = buildRouterConfig();
+
+  transient var app : Liminal.App = buildApp(routerConfig);
 
   public query func http_request(request : Liminal.RawQueryHttpRequest) : async Liminal.RawQueryHttpResponse {
     app.http_request(request);
