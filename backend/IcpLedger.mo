@@ -3,6 +3,7 @@ import Blob "mo:core@1/Blob";
 import Char "mo:core@1/Char";
 import Debug "mo:core@1/Debug";
 import Int "mo:core@1/Int";
+import Iter "mo:core@1/Iter";
 import Nat "mo:core@1/Nat";
 import Nat8 "mo:core@1/Nat8";
 import Nat32 "mo:core@1/Nat32";
@@ -30,16 +31,16 @@ module {
     to : Blob;
     created_at_time : ?TimeStamp;
   };
-  public type TransferError = variant {
-    BadFee : { expected_fee : Tokens };
-    InsufficientFunds : { balance : Tokens };
-    TxTooOld : { allowed_window_nanos : Nat64 };
-    TxCreatedInFuture;
-    TxDuplicate : { duplicate_of : Nat64 };
+  public type TransferError = {
+    #BadFee : { expected_fee : Tokens };
+    #InsufficientFunds : { balance : Tokens };
+    #TxTooOld : { allowed_window_nanos : Nat64 };
+    #TxCreatedInFuture;
+    #TxDuplicate : { duplicate_of : Nat64 };
   };
-  public type TransferResult = variant {
-    Ok : Nat64;
-    Err : TransferError;
+  public type TransferResult = {
+    #Ok : Nat64;
+    #Err : TransferError;
   };
   public type Ledger = actor {
     account_balance_dfx : shared query AccountBalanceArgs -> async Tokens;
@@ -98,29 +99,56 @@ module {
   };
 
   public func chargeForUrl(canisterPrincipal : Principal, user : Principal) : async Result.Result<(), Text> {
+    transferFromWallet(canisterPrincipal, user, targetAccountId, tinyUrlPriceE8s, ?(tinyUrlPriceE8s + transferFeeE8s));
+  };
+
+  public func withdrawFromWallet(
+    canisterPrincipal : Principal,
+    user : Principal,
+    destinationAccountId : Text,
+    amountE8s : Nat,
+  ) : async Result.Result<(), Text> {
+    if (amountE8s == 0) {
+      return #err("Withdrawal amount must be greater than 0.");
+    };
+
+    transferFromWallet(canisterPrincipal, user, destinationAccountId, amountE8s, ?(amountE8s + transferFeeE8s));
+  };
+
+  func transferFromWallet(
+    canisterPrincipal : Principal,
+    user : Principal,
+    destinationAccountId : Text,
+    amountE8s : Nat,
+    minimumRequiredBalance : ?Nat,
+  ) : async Result.Result<(), Text> {
     let walletInfo = await getWalletInfo(canisterPrincipal, user);
-    if (not hasSufficientBalance(walletInfo.balanceE8s)) {
-      return #err(
-        "Insufficient wallet balance. Need at least " # Nat.toText(tinyUrlPriceE8s + transferFeeE8s) # " e8s to cover the 1.0 ICP purchase and ledger fee."
-      );
+
+    switch (minimumRequiredBalance) {
+      case (?requiredBalance) {
+        if (walletInfo.balanceE8s < requiredBalance) {
+          return #err(
+            "Insufficient wallet balance. Need at least " # Nat.toText(requiredBalance) # " e8s to cover the transfer amount and ledger fee."
+          );
+        };
+      };
+      case null {};
     };
 
     let now = Nat64.fromNat(Int.abs(Time.now()));
     let transferArgs : TransferArgs = {
       memo = now;
-      amount = { e8s = Nat64.fromNat(tinyUrlPriceE8s) };
+      amount = { e8s = Nat64.fromNat(amountE8s) };
       fee = { e8s = Nat64.fromNat(transferFeeE8s) };
       from_subaccount = ?subaccountForPrincipal(user);
-      to = hexToBlob(targetAccountId);
+      to = hexToBlob(destinationAccountId);
       created_at_time = ?{ timestamp_nanos = now };
     };
 
     switch (await ledger.transfer(transferArgs)) {
       case (#Ok(_)) { #ok(()) };
       case (#Err(#InsufficientFunds({ balance }))) {
-        #err(
-          "Insufficient funds. Ledger balance: " # Nat64.toText(balance.e8s) # " e8s."
-        );
+        #err("Insufficient funds. Ledger balance: " # Nat64.toText(balance.e8s) # " e8s.");
       };
       case (#Err(#BadFee({ expected_fee }))) {
         #err("Ledger transfer fee changed. Expected fee: " # Nat64.toText(expected_fee.e8s) # " e8s.");
@@ -132,7 +160,7 @@ module {
         #err("Transfer request timestamp was rejected as being too far in the future.");
       };
       case (#Err(#TxDuplicate({ duplicate_of }))) {
-        Debug.print("Duplicate Tiny ICP payment transfer detected in block " # Nat64.toText(duplicate_of));
+        Debug.print("Duplicate Tiny ICP wallet transfer detected in block " # Nat64.toText(duplicate_of));
         #ok(());
       };
     };
@@ -151,7 +179,7 @@ module {
       Debug.trap("Account identifier must be 64 hex characters.");
     };
 
-    let chars = Text.toArray(hex);
+    let chars = hex.chars() |> Iter.toArray(_);
     Blob.fromArray(Array.tabulate<Nat8>(32, func(index) {
       let high = hexCharToNat8(chars[index * 2]);
       let low = hexCharToNat8(chars[index * 2 + 1]);

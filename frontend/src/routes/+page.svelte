@@ -27,6 +27,8 @@
     let copiedWalletValue = "";
     let showPurchaseModal = false;
     let pendingRequest = null;
+    let withdrawalAccountId = "";
+    let withdrawalAmountIcp = "";
 
     function getBackendBaseUrl(raw = true) {
         const canisterIdAndRaw = raw ? `${canisterId}.raw` : canisterId;
@@ -345,6 +347,48 @@
         successMessage = "";
     }
 
+    async function withdrawFromWallet() {
+        if (!wallet) {
+            error = "Load your wallet before withdrawing ICP.";
+            return;
+        }
+
+        const destinationAccountId = withdrawalAccountId.trim();
+        const amountIcp = Number(withdrawalAmountIcp);
+
+        if (!destinationAccountId) {
+            error = "Enter a destination account ID to withdraw ICP.";
+            return;
+        }
+
+        if (!Number.isFinite(amountIcp) || amountIcp <= 0) {
+            error = "Enter a valid ICP amount greater than zero.";
+            return;
+        }
+
+        const amountE8s = Math.round(amountIcp * 100_000_000);
+        const totalDebitE8s = amountE8s + wallet.transferFeeE8s;
+        if (wallet.balanceE8s < totalDebitE8s) {
+            error = `You need at least ${formatIcp(totalDebitE8s)} ICP in your in-app wallet to cover this withdrawal and the ledger fee.`;
+            return;
+        }
+
+        loading = true;
+        error = "";
+        try {
+            await UrlApi.withdrawFromWallet(destinationAccountId, amountE8s);
+            withdrawalAccountId = "";
+            withdrawalAmountIcp = "";
+            await loadWallet();
+            showSuccess(`Withdrawn ${amountIcp.toFixed(4)} ICP from your in-app wallet.`);
+        } catch (err) {
+            error = "Failed to withdraw ICP: " + err.message;
+            console.error("Error withdrawing ICP:", err);
+        } finally {
+            loading = false;
+        }
+    }
+
     $: purchasePriceIcp = wallet
         ? formatIcp(wallet.tinyUrlPriceE8s)
         : formatIcp(100_000_000);
@@ -526,6 +570,44 @@
                             <small>
                                 Each new short URL transfers 1.0 ICP to this destination before creation succeeds.
                             </small>
+                        </div>
+                    </div>
+
+                    <div class="wallet-withdraw">
+                        <h3>Transfer ICP out of your wallet</h3>
+                        <div class="withdraw-grid">
+                            <div class="form-field">
+                                <label for="withdraw-account" class="form-label">Destination Account ID</label>
+                                <input
+                                    id="withdraw-account"
+                                    type="text"
+                                    bind:value={withdrawalAccountId}
+                                    placeholder="Enter 64-character account ID"
+                                    disabled={loading}
+                                    class="form-input"
+                                />
+                            </div>
+                            <div class="form-field">
+                                <label for="withdraw-amount" class="form-label">Amount (ICP)</label>
+                                <input
+                                    id="withdraw-amount"
+                                    type="number"
+                                    min="0.0001"
+                                    step="0.0001"
+                                    bind:value={withdrawalAmountIcp}
+                                    placeholder="0.2500"
+                                    disabled={loading}
+                                    class="form-input"
+                                />
+                            </div>
+                        </div>
+                        <div class="action-row wallet-actions">
+                            <small class="wallet-help">
+                                Withdrawals are sent from your derived in-app wallet subaccount and include the standard {ledgerFeeIcp} ICP ledger fee.
+                            </small>
+                            <button type="button" class="refresh-btn" on:click={withdrawFromWallet} disabled={loading}>
+                                {loading ? "Sending..." : "Transfer ICP Out"}
+                            </button>
                         </div>
                     </div>
                 {:else}

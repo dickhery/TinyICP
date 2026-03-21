@@ -98,6 +98,20 @@ export class UrlApi {
     unwrapResult(result, 'delete URL');
   }
 
+  static async withdrawFromWallet(destinationAccountId, amountE8s) {
+    if (!destinationAccountId || !destinationAccountId.trim()) {
+      throw new Error('Destination account ID is required');
+    }
+
+    if (!Number.isFinite(amountE8s) || amountE8s <= 0) {
+      throw new Error('Withdrawal amount must be greater than zero');
+    }
+
+    const actor = await getBackendActor();
+    const result = await actor.withdraw_from_wallet(destinationAccountId.trim(), BigInt(Math.round(amountE8s)));
+    unwrapResult(result, 'withdraw ICP from wallet');
+  }
+
   static getShortUrl(shortCode) {
     return `${getBaseUrl(false)}/s/${shortCode}`;
   }

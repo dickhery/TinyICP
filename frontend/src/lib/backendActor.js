@@ -47,6 +47,7 @@ const idlFactory = ({ IDL }) => {
     delete_my_url: IDL.Func([IDL.Nat], [ResultUnit], []),
     get_wallet_info: IDL.Func([], [WalletInfo], []),
     list_my_urls: IDL.Func([], [IDL.Vec(UrlView)], ['query']),
+    withdraw_from_wallet: IDL.Func([IDL.Text, IDL.Nat], [ResultUnit], []),
     whoami: IDL.Func([], [IDL.Principal], ['query'])
   });
 };

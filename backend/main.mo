@@ -65,6 +65,11 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     urlStore.delete(id, caller);
   };
 
+  public shared ({ caller }) func withdraw_from_wallet(destinationAccountId : Text, amountE8s : Nat) : async Result.Result<(), Text> {
+    assertAuthenticated(caller);
+    await IcpLedger.withdrawFromWallet(canisterPrincipal, caller, destinationAccountId, amountE8s);
+  };
+
   public shared query ({ caller }) func whoami() : async Principal {
     caller;
   };
