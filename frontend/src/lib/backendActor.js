@@ -30,24 +30,13 @@ const idlFactory = ({ IDL }) => {
     clicks: IDL.Nat,
     createdAt: IDL.Int
   });
-  const WalletInfo = IDL.Record({
-    canisterPrincipal: IDL.Principal,
-    depositAccountId: IDL.Text,
-    subaccountHex: IDL.Text,
-    balanceE8s: IDL.Nat,
-    transferFeeE8s: IDL.Nat,
-    tinyUrlPriceE8s: IDL.Nat
-  });
   const ResultUrl = IDL.Variant({ ok: UrlView, err: IDL.Text });
   const ResultUnit = IDL.Variant({ ok: IDL.Null, err: IDL.Text });
-  const ResultNat64 = IDL.Variant({ ok: IDL.Nat64, err: IDL.Text });
 
   return IDL.Service({
     create_my_url: IDL.Func([CreateRequest], [ResultUrl], []),
     delete_my_url: IDL.Func([IDL.Nat], [ResultUnit], []),
-    get_wallet_info: IDL.Func([], [WalletInfo], []),
     list_my_urls: IDL.Func([], [IDL.Vec(UrlView)], ['query']),
-    transfer_from_wallet: IDL.Func([IDL.Text, IDL.Nat], [ResultNat64], []),
     whoami: IDL.Func([], [IDL.Principal], ['query'])
   });
 };
