@@ -22,7 +22,7 @@
     let customSlug = "";
     let copiedShortUrl = "";
 
-    function getBaseUrl(raw = true) {
+    function getBackendBaseUrl(raw = true) {
         const canisterIdAndRaw = raw ? `${canisterId}.raw` : canisterId;
 
         if (typeof window === "undefined") {
@@ -44,7 +44,7 @@
     }
 
     $: curlCommand = (() => {
-        const baseUrl = getBaseUrl();
+        const baseUrl = getBackendBaseUrl();
 
         if (!newUrl.trim()) {
             return `curl '${baseUrl}/shorten' \\
@@ -161,7 +161,7 @@
             customSlug = "";
 
             const shortCode = shortenedUrl.shortCode;
-            const fullShortUrl = UrlApi.getShortUrl(shortCode);
+            const fullShortUrl = getPublicShortUrl(shortCode);
             showSuccess(`[>] Short URL created: ${fullShortUrl}`);
         } catch (err) {
             error = "Failed to shorten URL: " + err.message;
@@ -194,19 +194,55 @@
         }
     }
 
-    function copyToClipboard(text) {
-        navigator.clipboard
-            .writeText(text)
-            .then(() => {
-                copiedShortUrl = text;
-                showSuccess(`[C] Copied to clipboard: ${text}`);
-                setTimeout(() => {
-                    copiedShortUrl = "";
-                }, 2000);
-            })
-            .catch(() => {
-                error = "Failed to copy to clipboard";
-            });
+    function getPublicShortUrl(shortCode) {
+        if (typeof window === "undefined") {
+            return `/s/${shortCode}`;
+        }
+
+        return `${window.location.origin}/s/${shortCode}`;
+    }
+
+    function copyWithExecCommand(text) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.setAttribute("readonly", "");
+        textArea.style.position = "fixed";
+        textArea.style.opacity = "0";
+        textArea.style.pointerEvents = "none";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        textArea.setSelectionRange(0, text.length);
+
+        try {
+            return document.execCommand("copy");
+        } finally {
+            document.body.removeChild(textArea);
+        }
+    }
+
+    async function copyToClipboard(text) {
+        error = "";
+
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(text);
+            } else if (!copyWithExecCommand(text)) {
+                throw new Error("execCommand copy failed");
+            }
+        } catch (clipboardError) {
+            if (!copyWithExecCommand(text)) {
+                console.error("Clipboard copy failed:", clipboardError);
+                error = "Failed to copy to clipboard. Please copy it manually.";
+                return;
+            }
+        }
+
+        copiedShortUrl = text;
+        showSuccess(`[C] Copied to clipboard: ${text}`);
+        setTimeout(() => {
+            copiedShortUrl = "";
+        }, 2000);
     }
 
     function openUrl(url) {
