@@ -31,14 +31,15 @@ module {
         case (null) {
           routeContext.buildResponse(#notFound, #error(#message("Short URL not found")));
         };
-        case (?originalUrl) {
+        case (?url) {
+          let html = generateRedirectHtml(shortCode, url.originalUrl, url.metadata);
           routeContext.buildResponse(
-            #found,
+            #ok,
             #custom({
-              body = Text.encodeUtf8("Redirecting to " # originalUrl);
+              body = Text.encodeUtf8(html);
               headers = [
-                ("Location", originalUrl),
-                ("Cache-Control", "no-cache"),
+                ("Content-Type", "text/html; charset=utf-8"),
+                ("Cache-Control", "no-cache, no-store, must-revalidate"),
               ];
             }),
           );
@@ -79,7 +80,7 @@ module {
         };
       };
 
-      switch (store.create(createRequest, Principal.fromText("2vxsx-fae"))) {
+      switch (store.create(createRequest, Principal.fromText("2vxsx-fae"), null)) {
         case (#err(errorMessage)) {
           routeContext.buildResponse(#badRequest, #error(#message(errorMessage)));
         };
@@ -136,7 +137,7 @@ module {
     };
 
     func toCandid(value : Blob) : Serde.Candid.Candid {
-      let urlKeys = ["id", "originalUrl", "shortCode", "clicks", "createdAt"];
+      let urlKeys = ["id", "originalUrl", "shortCode", "clicks", "createdAt", "metadata"];
       let options : ?Serde.Options = ?{
         renameKeys = [];
         blob_contains_only_values = false;
@@ -156,6 +157,111 @@ module {
           candid[0];
         };
       };
+    };
+
+    func generateRedirectHtml(shortCode : Text, originalUrl : Text, metadata : ?UrlStore.UrlMetadata) : Text {
+      let escapedOriginalUrl = escapeHtml(originalUrl);
+      let title = switch (metadata) {
+        case (?data) chooseText(data.title, "TinyICP Short Link - " # shortCode);
+        case null "TinyICP Short Link - " # shortCode;
+      };
+      let description = switch (metadata) {
+        case (?data) chooseText(data.description, "Shortened with TinyICP on the Internet Computer. Original: " # originalUrl);
+        case null "Shortened with TinyICP on the Internet Computer. Original: " # originalUrl;
+      };
+      let siteName = switch (metadata) {
+        case (?data) chooseText(data.siteName, "TinyICP");
+        case null "TinyICP";
+      };
+      let canonicalUrl = switch (metadata) {
+        case (?data) chooseText(data.canonicalUrl, originalUrl);
+        case null originalUrl;
+      };
+      let escapedTitle = escapeHtml(title);
+      let escapedDescription = escapeHtml(description);
+      let escapedSiteName = escapeHtml(siteName);
+      let escapedCanonicalUrl = escapeHtml(canonicalUrl);
+      let imageMeta = switch (metadata) {
+        case (?data) {
+          switch (data.imageUrl) {
+            case (?value) {
+              if (value != "") {
+                let escapedImageUrl = escapeHtml(value);
+                "    <meta property=\"og:image\" content=\"" # escapedImageUrl # "\">\n" #
+                "    <meta name=\"twitter:image\" content=\"" # escapedImageUrl # "\">\n";
+              } else {
+                "";
+              };
+            };
+            case null "";
+          };
+        };
+        case null "";
+      };
+
+      "<!DOCTYPE html>\n" #
+      "<html lang=\"en\">\n" #
+      "<head>\n" #
+      "    <meta charset=\"UTF-8\">\n" #
+      "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" #
+      "    <title>" # escapedTitle # "</title>\n" #
+      "    <meta property=\"og:type\" content=\"website\">\n" #
+      "    <meta property=\"og:url\" content=\"" # escapedCanonicalUrl # "\">\n" #
+      "    <meta property=\"og:title\" content=\"" # escapedTitle # "\">\n" #
+      "    <meta property=\"og:description\" content=\"" # escapedDescription # "\">\n" #
+      "    <meta property=\"og:site_name\" content=\"" # escapedSiteName # "\">\n" #
+      imageMeta #
+      "    <meta name=\"twitter:card\" content=\"summary_large_image\">\n" #
+      "    <meta name=\"twitter:title\" content=\"" # escapedTitle # "\">\n" #
+      "    <meta name=\"twitter:description\" content=\"" # escapedDescription # "\">\n" #
+      "    <meta http-equiv=\"refresh\" content=\"0; url=" # escapedOriginalUrl # "\">\n" #
+      "    <style>\n" #
+      "      body { font-family: monospace; background: #000; color: #00ff9c; padding: 40px; text-align: center; font-size: 18px; }\n" #
+      "      .panel { max-width: 640px; margin: 10vh auto; border: 1px solid #00ff9c; padding: 32px; box-shadow: 0 0 24px rgba(0, 255, 156, 0.15); background: rgba(0,0,0,0.92); }\n" #
+      "      a { color: #8fffd2; }\n" #
+      "      .muted { opacity: 0.75; font-size: 14px; word-break: break-all; }\n" #
+      "    </style>\n" #
+      "</head>\n" #
+      "<body>\n" #
+      "    <div class=\"panel\">\n" #
+      "      <h1>🌐 TinyICP</h1>\n" #
+      "      <p>Redirecting you to the original URL...</p>\n" #
+      "      <p class=\"muted\">" # escapedOriginalUrl # "</p>\n" #
+      "      <p>If you are not redirected automatically, <a href=\"" # escapedOriginalUrl # "\">click here</a>.</p>\n" #
+      "    </div>\n" #
+      "    <script>setTimeout(() => { window.location.replace('" # escapeJsString(originalUrl) # "'); }, 300);</script>\n" #
+      "</body>\n" #
+      "</html>";
+    };
+
+    func chooseText(candidate : ?Text, fallback : Text) : Text {
+      switch (candidate) {
+        case (?value) {
+          if (value != "") {
+            value;
+          } else {
+            fallback;
+          };
+        };
+        case null fallback;
+      };
+    };
+
+    func escapeHtml(value : Text) : Text {
+      value
+      |> Text.replace(_, #text("&"), "&amp;")
+      |> Text.replace(_, #text("\""), "&quot;")
+      |> Text.replace(_, #text("'"), "&#39;")
+      |> Text.replace(_, #text("<"), "&lt;")
+      |> Text.replace(_, #text(">"), "&gt;");
+    };
+
+    func escapeJsString(value : Text) : Text {
+      value
+      |> Text.replace(_, #text("\\"), "\\\\")
+      |> Text.replace(_, #text("'"), "\\'")
+      |> Text.replace(_, #text("\n"), "\\n")
+      |> Text.replace(_, #text("\r"), "\\r");
     };
   };
 };
