@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Tiny ICP favicon</title>
+  <desc id="desc">Black square with a neon green border and the letters TI in the center.</desc>
+  <rect width="512" height="512" rx="120" fill="#05070c" />
+  <rect x="24" y="24" width="464" height="464" rx="96" fill="none" stroke="#91ff24" stroke-width="18" />
+  <circle cx="256" cy="136" r="16" fill="#91ff24" />
+  <path
+    d="M154 174h204v48h-78v146h-48V222h-78zm164 0h48v194h-48z"
+    fill="#f7fff1"
+  />
+</svg>
