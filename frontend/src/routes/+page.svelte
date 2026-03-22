@@ -692,40 +692,6 @@
     });
 </script>
 
-<svelte:head>
-    <title>Tiny ICP</title>
-    <meta
-        name="description"
-        content="Tiny ICP lets you create prepaid short URLs with click tracking, wallet funding, and instant top-ups on TinyICP.com."
-    />
-    <link rel="canonical" href="https://tinyicp.com/" />
-
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="Tiny ICP" />
-    <meta
-        property="og:description"
-        content="Create prepaid short URLs with click tracking, wallet funding, and instant top-ups on TinyICP.com."
-    />
-    <meta property="og:url" content="https://tinyicp.com/" />
-    <meta property="og:site_name" content="Tiny ICP" />
-    <meta property="og:image" content="https://tinyicp.com/og-preview.png" />
-    <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta
-        property="og:image:alt"
-        content="Tiny ICP app preview card showing the Tiny ICP name and URL."
-    />
-
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Tiny ICP" />
-    <meta
-        name="twitter:description"
-        content="Create prepaid short URLs with click tracking, wallet funding, and instant top-ups on TinyICP.com."
-    />
-    <meta name="twitter:image" content="https://tinyicp.com/og-preview.png" />
-</svelte:head>
-
 <main>
     <div class="header">
         <h1>Tiny ICP</h1>
