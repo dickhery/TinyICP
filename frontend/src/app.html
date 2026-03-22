@@ -68,6 +68,22 @@
 			});
 		}
 	</script>
+	<script>
+		const contactWidgetSrc =
+			"https://thowo-iqaaa-aaaab-ac3wa-cai.icp0.io/contact.js?id=contact-15&color=%2391ff24";
+		const shouldLoadContactWidget = !window.location.pathname.startsWith("/s/");
+
+		if (
+			shouldLoadContactWidget &&
+			!document.getElementById("tinyicp-contact-widget-script")
+		) {
+			const contactWidgetScript = document.createElement("script");
+			contactWidgetScript.id = "tinyicp-contact-widget-script";
+			contactWidgetScript.src = contactWidgetSrc;
+			contactWidgetScript.defer = true;
+			document.head.appendChild(contactWidgetScript);
+		}
+	</script>
 	%sveltekit.head%
 </head>
 

@@ -287,6 +287,43 @@
         return UrlApi.getPublicShortUrl(shortCode);
     }
 
+    function getPreviewShortUrl(shortCode) {
+        return UrlApi.getBackendShortUrl(shortCode);
+    }
+
+    function getUrlOptions(url) {
+        const options = [
+            {
+                key: "preview",
+                label: "Preview URL",
+                description: "Longer, allows link previews",
+                href: getPreviewShortUrl(url.shortCode)
+            },
+            {
+                key: "tinyicp",
+                label: "TinyICP URL",
+                description: "Shorter, no link previews",
+                href: getPublicShortUrl(url.shortCode)
+            },
+            {
+                key: "original",
+                label: "Original URL",
+                description: "Direct destination URL",
+                href: url.originalUrl
+            }
+        ];
+
+        const seen = new Set();
+        return options.filter((option) => {
+            if (!hasText(option.href) || seen.has(option.href)) {
+                return false;
+            }
+
+            seen.add(option.href);
+            return true;
+        });
+    }
+
     function hasText(value) {
         return typeof value === "string" && value.trim().length > 0;
     }
@@ -758,20 +795,6 @@
                                         <h3 class="short-code">/{url.shortCode}</h3>
                                         <div class="url-actions">
                                             <button
-                                                class="copy-btn small"
-                                                class:copied={copiedShortUrl ===
-                                                    getPublicShortUrl(url.shortCode)}
-                                                on:click={() =>
-                                                    copyToClipboard(
-                                                        getPublicShortUrl(url.shortCode)
-                                                    )}
-                                            >
-                                                {copiedShortUrl ===
-                                                getPublicShortUrl(url.shortCode)
-                                                    ? "Copied ✓"
-                                                    : "Copy Url"}
-                                            </button>
-                                            <button
                                                 class="visit-btn"
                                                 on:click={() =>
                                                     openUrl(getPublicShortUrl(url.shortCode))}
@@ -789,79 +812,123 @@
                                     </div>
 
                                     <div class="url-details">
-                                        <p class="short-url">
-                                            <strong>Short:</strong>
-                                            <a
-                                                href={getPublicShortUrl(url.shortCode)}
-                                                target="_blank"
-                                                rel="noopener"
-                                            >
-                                                {getPublicShortUrl(url.shortCode)}
-                                            </a>
-                                        </p>
-                                        <p class="original-url">
-                                            <strong>Original:</strong>
-                                            <a
-                                                href={url.originalUrl}
-                                                target="_blank"
-                                                rel="noopener"
-                                                class="original-link"
-                                            >
-                                                {url.originalUrl}
-                                            </a>
-                                        </p>
+                                        <a
+                                            href={getPublicShortUrl(url.shortCode)}
+                                            target="_blank"
+                                            rel="noopener"
+                                            class="url-primary-link"
+                                        >
+                                            {getPublicShortUrl(url.shortCode)}
+                                        </a>
                                         <div class="url-stats">
                                             <span class="stat">[HITS] {url.clicks || 0} clicks</span>
                                             <span class="stat">[DATE] {formatDate(url.createdAt)}</span>
                                         </div>
-                                        <div class="preview-panel">
-                                            <div class="preview-panel-header">
+                                        <details class="url-section-toggle">
+                                            <summary class="url-section-summary">
+                                                <span>Link options ({getUrlOptions(url).length})</span>
+                                                <span class="url-section-hint"
+                                                    >Expand to copy or view all URLs</span
+                                                >
+                                            </summary>
+                                            <div class="url-links">
+                                                {#each getUrlOptions(url) as option (option.key)}
+                                                    <div class="url-link-row">
+                                                        <div class="url-link-top">
+                                                            <div class="url-link-meta">
+                                                                <strong class="url-link-label"
+                                                                    >{option.label}</strong
+                                                                >
+                                                                <span class="url-link-description"
+                                                                    >{option.description}</span
+                                                                >
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                class="copy-btn small"
+                                                                class:copied={copiedShortUrl ===
+                                                                    option.href}
+                                                                on:click={() =>
+                                                                    copyToClipboard(option.href)}
+                                                            >
+                                                                {copiedShortUrl === option.href
+                                                                    ? "Copied ✓"
+                                                                    : "Copy URL"}
+                                                            </button>
+                                                        </div>
+                                                        <a
+                                                            href={option.href}
+                                                            target="_blank"
+                                                            rel="noopener"
+                                                            class="url-link-anchor"
+                                                            class:original-link={option.key ===
+                                                                "original"}
+                                                        >
+                                                            {option.href}
+                                                        </a>
+                                                    </div>
+                                                {/each}
+                                            </div>
+                                        </details>
+                                        <details class="url-section-toggle">
+                                            <summary class="url-section-summary">
                                                 <span
                                                     class={`preview-badge ${getPreviewStatus(
                                                         url
                                                     )}`}
                                                     >{getPreviewStatusLabel(url)}</span
                                                 >
-                                                <button
-                                                    type="button"
-                                                    class="refresh-btn preview-refresh-btn"
-                                                    on:click={() =>
-                                                        refreshUrlPreview(url.id)}
-                                                    disabled={loading ||
-                                                        isRefreshingPreview(url.id)}
+                                                <span class="url-section-hint"
+                                                    >Expand to view preview details</span
                                                 >
-                                                    {isRefreshingPreview(url.id)
-                                                        ? "Refreshing..."
-                                                        : "Refresh Preview"}
-                                                </button>
+                                            </summary>
+                                            <div class="preview-panel">
+                                                <div class="preview-panel-header">
+                                                    <button
+                                                        type="button"
+                                                        class="refresh-btn preview-refresh-btn"
+                                                        on:click={() =>
+                                                            refreshUrlPreview(url.id)}
+                                                        disabled={loading ||
+                                                            isRefreshingPreview(url.id)}
+                                                    >
+                                                        {isRefreshingPreview(url.id)
+                                                            ? "Refreshing..."
+                                                            : "Refresh Preview"}
+                                                    </button>
+                                                </div>
+                                                {#if url.metadata}
+                                                    {#if url.metadata.title}
+                                                        <p class="preview-meta">
+                                                            <strong>Title:</strong>
+                                                            {url.metadata.title}
+                                                        </p>
+                                                    {/if}
+                                                    {#if url.metadata.description}
+                                                        <p class="preview-meta">
+                                                            <strong>Description:</strong>
+                                                            {url.metadata.description}
+                                                        </p>
+                                                    {/if}
+                                                    {#if url.metadata.imageUrl}
+                                                        <p class="preview-meta">
+                                                            <strong>Image:</strong>
+                                                            <a
+                                                                href={url.metadata.imageUrl}
+                                                                target="_blank"
+                                                                rel="noopener"
+                                                            >
+                                                                {url.metadata.imageUrl}
+                                                            </a>
+                                                        </p>
+                                                    {/if}
+                                                {:else}
+                                                    <p class="preview-meta">
+                                                        Preview metadata has not been captured yet.
+                                                    </p>
+                                                {/if}
                                             </div>
-                                            {#if url.metadata}
-                                                {#if url.metadata.title}
-                                                    <p class="preview-meta">
-                                                        <strong>Title:</strong>
-                                                        {url.metadata.title}
-                                                    </p>
-                                                {/if}
-                                                {#if url.metadata.description}
-                                                    <p class="preview-meta">
-                                                        <strong>Description:</strong>
-                                                        {url.metadata.description}
-                                                    </p>
-                                                {/if}
-                                                {#if url.metadata.imageUrl}
-                                                    <p class="preview-meta">
-                                                        <strong>Image:</strong>
-                                                        <a
-                                                            href={url.metadata.imageUrl}
-                                                            target="_blank"
-                                                            rel="noopener"
-                                                        >
-                                                            {url.metadata.imageUrl}
-                                                        </a>
-                                                    </p>
-                                                {/if}
-                                            {/if}
-                                        </div>
+                                        </details>
                                     </div>
                                 </div>
                             </div>
