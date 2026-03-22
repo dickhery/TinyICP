@@ -1,5 +1,7 @@
 # Liminal URL Shortener
 
+Tiny ICP is a prepaid URL shortener built on the Internet Computer. Inspired by the Liminal URL Shortener template on ICP.Ninja by Gekctek (Ethan Celletti) and the Liminal HTTP framework by edjCase (MIT license).
+
 A retro terminal-styled URL shortener demo showcasing HTTP-native features on the Internet Computer. This demo demonstrates how to build a functional web service using the Liminal HTTP framework with Motoko, emphasizing curl usage and proper HTTP semantics.
 
 ## Features
