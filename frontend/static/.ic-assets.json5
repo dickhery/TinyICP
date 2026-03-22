@@ -1,5 +1,9 @@
 [
     {
+    "match": ".well-known",
+    "ignore": false
+  },
+    {
         "match": "**/*",
 
         // Provides a base set of security headers that will work for most dapps.
