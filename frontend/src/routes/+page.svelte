@@ -26,6 +26,7 @@
     let copiedWalletValue = "";
     let showPurchaseModal = false;
     let pendingRequest = null;
+    let deleteCandidate = null;
     let withdrawalAccountId = "";
     let withdrawalAmountIcp = "";
     let refreshingPreviewIds = [];
@@ -225,21 +226,34 @@
         }
     }
 
-    async function deleteUrl(id) {
+    function requestDeleteUrl(id) {
         const urlItem = urls.find((u) => u.id === id);
-        if (
-            !confirm(
-                `Are you sure you want to delete the short URL "${urlItem?.shortCode || "this URL"}"?`
-            )
-        )
+        if (!urlItem) {
+            error = "We could not find that short URL.";
             return;
+        }
+
+        deleteCandidate = urlItem;
+    }
+
+    function cancelDelete() {
+        deleteCandidate = null;
+    }
+
+    async function confirmDeleteUrl() {
+        if (!deleteCandidate) {
+            return;
+        }
+
+        const { id, shortCode } = deleteCandidate;
 
         loading = true;
         error = "";
         try {
             await UrlApi.deleteUrl(id);
             urls = urls.filter((url) => url.id !== id);
-            showSuccess(`Short URL deleted successfully`);
+            deleteCandidate = null;
+            showSuccess(`Deleted /${shortCode} from your TinyICP dashboard.`);
         } catch (err) {
             error = "Failed to delete URL: " + err.message;
             console.error("Error deleting URL:", err);
@@ -577,6 +591,16 @@
 
     function handleKeydown(event) {
         if (event.key === "Escape") {
+            if (deleteCandidate && !loading) {
+                cancelDelete();
+                return;
+            }
+
+            if (showPurchaseModal && !loading) {
+                cancelPurchase();
+                return;
+            }
+
             newUrl = "";
             customSlug = "";
             clearError();
@@ -951,7 +975,7 @@
                         aria-modal="true"
                         aria-labelledby="purchase-modal-title"
                     >
-                        <p class="auth-kicker">Purchase confirmation</p>
+                        <p class="modal-kicker">Purchase confirmation</p>
                         <h2 id="purchase-modal-title">Confirm Tiny URL creation</h2>
                         <p>
                             Creating this short URL will transfer
@@ -981,6 +1005,64 @@
                                 {loading
                                     ? "Processing payment..."
                                     : `Confirm & Pay ${getClickPurchaseCostIcp(pendingRequest?.purchasedClicks || minimumPurchaseClicks)} ICP`}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            {/if}
+
+            {#if deleteCandidate}
+                <div class="modal-backdrop" role="presentation">
+                    <div
+                        class="confirm-modal danger-modal"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="delete-modal-title"
+                    >
+                        <p class="modal-kicker danger-kicker">Danger zone</p>
+                        <h2 id="delete-modal-title">Delete /{deleteCandidate.shortCode}?</h2>
+                        <p>
+                            This permanently removes the short URL from your TinyICP dashboard and
+                            discards any remaining prepaid clicks attached to it. This action
+                            cannot be undone.
+                        </p>
+                        <div class="wallet-status delete-summary">
+                            <div>
+                                <strong>TinyICP URL:</strong>
+                                {getPublicShortUrl(deleteCandidate.shortCode)}
+                            </div>
+                            <div>
+                                <strong>Destination:</strong> {deleteCandidate.originalUrl}
+                            </div>
+                            <div>
+                                <strong>Remaining prepaid clicks:</strong>
+                                {formatClicks(deleteCandidate.allowance?.remainingClicks || 0)}
+                            </div>
+                            <div>
+                                <strong>Total recorded clicks:</strong>
+                                {formatClicks(deleteCandidate.clicks)}
+                            </div>
+                        </div>
+                        <p class="modal-note danger-note">
+                            Delete only if you are sure nobody should be able to use this short link
+                            anymore.
+                        </p>
+                        <div class="action-row modal-actions">
+                            <button
+                                type="button"
+                                class="refresh-btn"
+                                on:click={cancelDelete}
+                                disabled={loading}
+                            >
+                                Keep URL
+                            </button>
+                            <button
+                                type="button"
+                                class="danger-btn"
+                                on:click={confirmDeleteUrl}
+                                disabled={loading}
+                            >
+                                {loading ? "Deleting URL..." : "Delete Permanently"}
                             </button>
                         </div>
                     </div>
@@ -1021,7 +1103,7 @@
                                                 ↗
                                             </button>
                                             <button
-                                                on:click={() => deleteUrl(url.id)}
+                                                on:click={() => requestDeleteUrl(url.id)}
                                                 disabled={loading}
                                                 class="delete-btn"
                                             >
