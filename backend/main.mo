@@ -48,17 +48,21 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     urls = BTree.init<Nat, UrlStore.Url>(null);
     nextId = 1;
   };
+  var urlBillingStableData : UrlStore.BillingStableData = {
+    allowances = BTree.init<Nat, UrlStore.UrlAllowance>(null);
+  };
 
-  transient var urlStore = UrlStore.Store(urlStableData);
+  transient var urlStore = UrlStore.Store(urlStableData, urlBillingStableData);
   transient let canisterPrincipal = Principal.fromActor(self);
   transient var urlRouter = UrlRouter.Router(urlStore, Principal.toText(canisterPrincipal) # ".icp0.io");
 
   system func preupgrade() {
     urlStableData := urlStore.toStableData();
+    urlBillingStableData := urlStore.toBillingStableData();
   };
 
   system func postupgrade() {
-    urlStore := UrlStore.Store(urlStableData);
+    urlStore := UrlStore.Store(urlStableData, urlBillingStableData);
     urlRouter := UrlRouter.Router(urlStore, Principal.toText(canisterPrincipal) # ".icp0.io");
     routerConfig := buildRouterConfig();
     app := buildApp(routerConfig);
@@ -77,9 +81,10 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
   };
 
   public shared func record_short_link_visit(shortCode : Text) : async Result.Result<UrlStore.UrlView, Text> {
-    switch (urlStore.incrementClicks(shortCode)) {
-      case (?url) #ok(urlStore.toView(url));
-      case null #err("Short URL not found");
+    switch (urlStore.recordVisit(shortCode)) {
+      case (#ok(url)) #ok(urlStore.toView(url));
+      case (#inactive(_)) #err(UrlStore.allowanceExhaustedMessage);
+      case (#notFound) #err("Short URL not found");
     };
   };
 
@@ -98,13 +103,39 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
       case (#ok(())) {};
     };
 
-    switch (await IcpLedger.chargeForUrl(canisterPrincipal, caller)) {
+    switch (await IcpLedger.chargeForClicks(canisterPrincipal, caller, request.purchasedClicks)) {
       case (#err(message)) {
         #err("Payment required before Tiny ICP can create your short URL. " # message);
       };
       case (#ok(())) {
         let metadata = await fetchUrlMetadata(request.originalUrl);
         switch (urlStore.create(request, caller, metadata)) {
+          case (#ok(url)) #ok(urlStore.toView(url));
+          case (#err(message)) #err(message);
+        };
+      };
+    };
+  };
+
+  public shared ({ caller }) func top_up_my_url(
+    id : Nat,
+    purchasedClicks : Nat,
+  ) : async Result.Result<UrlStore.UrlView, Text> {
+    assertAuthenticated(caller);
+
+    switch (urlStore.validateTopUp(id, caller, purchasedClicks)) {
+      case (#err(message)) {
+        return #err(message);
+      };
+      case (#ok(())) {};
+    };
+
+    switch (await IcpLedger.chargeForClicks(canisterPrincipal, caller, purchasedClicks)) {
+      case (#err(message)) {
+        #err("Payment required before Tiny ICP can top up this URL. " # message);
+      };
+      case (#ok(())) {
+        switch (urlStore.topUp(id, caller, purchasedClicks)) {
           case (#ok(url)) #ok(urlStore.toView(url));
           case (#err(message)) #err(message);
         };

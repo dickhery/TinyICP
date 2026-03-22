@@ -9,11 +9,19 @@ import Principal "mo:core@1/Principal";
 import Char "mo:core@1/Char";
 import BTree "mo:stableheapbtreemap/BTree";
 import Debug "mo:core@1/Debug";
+import Pricing "Pricing";
 
 module {
+  public let allowanceExhaustedMessage : Text =
+    "This TinyICP URL is paused because its prepaid click allowance has run out. Top it up in the TinyICP app to reactivate it.";
+
   public type StableData = {
     urls : BTree.BTree<Nat, Url>;
     nextId : Nat;
+  };
+
+  public type BillingStableData = {
+    allowances : BTree.BTree<Nat, UrlAllowance>;
   };
 
   public type UrlMetadata = {
@@ -34,6 +42,18 @@ module {
     metadata : ?UrlMetadata;
   };
 
+  public type UrlAllowance = {
+    totalPurchasedClicks : Nat;
+    remainingClicks : Nat;
+    lastTopUpAt : Int;
+  };
+
+  public type UrlAllowanceView = {
+    totalPurchasedClicks : Nat;
+    remainingClicks : Nat;
+    isActive : Bool;
+  };
+
   public type UrlView = {
     id : Nat;
     originalUrl : Text;
@@ -41,14 +61,22 @@ module {
     clicks : Nat;
     createdAt : Int;
     metadata : ?UrlMetadata;
+    allowance : UrlAllowanceView;
   };
 
   public type CreateRequest = {
     originalUrl : Text;
     customSlug : ?Text;
+    purchasedClicks : Nat;
   };
 
-  public class Store(stableData : StableData) = self {
+  public type VisitResult = {
+    #ok : Url;
+    #inactive : Url;
+    #notFound;
+  };
+
+  public class Store(stableData : StableData, billingStableData : BillingStableData) = self {
 
     var nextId = stableData.nextId;
 
@@ -94,10 +122,20 @@ module {
       BTree.get(stableData.urls, Nat.compare, id);
     };
 
-    public func incrementClicks(shortCode : Text) : ?Url {
-      let ?url = getUrlByShortCode(shortCode) else return null;
+    public func recordVisit(shortCode : Text) : VisitResult {
+      let ?url = getUrlByShortCode(shortCode) else return #notFound;
+      let allowance = ensurePersistedAllowance(url.id);
+      let remainingClicks = remainingClicksFor(url, allowance);
 
-      Debug.print("Incrementing clicks for shortCode: " # shortCode # " (ID: " # Nat.toText(url.id) # "), current clicks: " # Nat.toText(url.clicks));
+      if (remainingClicks == 0) {
+        return #inactive(url);
+      };
+
+      Debug.print(
+        "Recording click for shortCode: " # shortCode #
+        " (ID: " # Nat.toText(url.id) # "), current clicks: " # Nat.toText(url.clicks) #
+        ", remaining prepaid clicks: " # Nat.toText(remainingClicks)
+      );
 
       let updatedUrl : Url = {
         url with
@@ -105,12 +143,35 @@ module {
       };
 
       ignore BTree.insert(stableData.urls, Nat.compare, url.id, updatedUrl);
-      ?updatedUrl;
+      #ok(updatedUrl);
+    };
+
+    public func validateClickPurchase(purchasedClicks : Nat) : Result.Result<(), Text> {
+      if (purchasedClicks < Pricing.minimumPurchaseClicks) {
+        return #err(
+          "TinyICP requires at least " # Nat.toText(Pricing.minimumPurchaseClicks) #
+          " prepaid clicks per purchase."
+        );
+      };
+
+      if (purchasedClicks % Pricing.clickBundleSize != 0) {
+        return #err(
+          "TinyICP click purchases must be made in " # Nat.toText(Pricing.clickBundleSize) #
+          "-click increments."
+        );
+      };
+
+      #ok(());
     };
 
     public func validateCreateRequest(request : CreateRequest) : Result.Result<(), Text> {
       if (not isValidUrl(request.originalUrl)) {
         return #err("Invalid URL format: " # request.originalUrl);
+      };
+
+      switch (validateClickPurchase(request.purchasedClicks)) {
+        case (#err(message)) return #err(message);
+        case (#ok(())) {};
       };
 
       switch (request.customSlug) {
@@ -126,6 +187,16 @@ module {
       };
 
       #ok(());
+    };
+
+    public func validateTopUp(id : Nat, caller : Principal, purchasedClicks : Nat) : Result.Result<(), Text> {
+      let ?url = getUrlById(id) else return #err("URL not found");
+
+      if (not Principal.equal(url.owner, caller)) {
+        return #err("You can only top up URLs you created");
+      };
+
+      validateClickPurchase(purchasedClicks);
     };
 
     public func create(request : CreateRequest, owner : Principal, metadata : ?UrlMetadata) : Result.Result<Url, Text> {
@@ -154,8 +225,36 @@ module {
       nextId += 1;
       ignore BTree.insert(stableData.urls, Nat.compare, newUrl.id, newUrl);
       Map.add(slugToIdMap, Text.compare, shortCode, newUrl.id);
+      ignore BTree.insert(
+        billingStableData.allowances,
+        Nat.compare,
+        newUrl.id,
+        {
+          totalPurchasedClicks = request.purchasedClicks;
+          remainingClicks = request.purchasedClicks;
+          lastTopUpAt = Time.now();
+        },
+      );
 
       #ok(newUrl);
+    };
+
+    public func topUp(id : Nat, caller : Principal, purchasedClicks : Nat) : Result.Result<Url, Text> {
+      switch (validateTopUp(id, caller, purchasedClicks)) {
+        case (#err(message)) return #err(message);
+        case (#ok(())) {};
+      };
+
+      let ?url = getUrlById(id) else return #err("URL not found");
+      let allowance = ensurePersistedAllowance(id);
+      let updatedAllowance : UrlAllowance = {
+        totalPurchasedClicks = allowance.totalPurchasedClicks + purchasedClicks;
+        remainingClicks = remainingClicksFor(url, allowance) + purchasedClicks;
+        lastTopUpAt = Time.now();
+      };
+
+      ignore BTree.insert(billingStableData.allowances, Nat.compare, id, updatedAllowance);
+      #ok(url);
     };
 
     public func delete(id : Nat, caller : Principal) : Result.Result<(), Text> {
@@ -166,6 +265,7 @@ module {
       };
 
       ignore BTree.delete(stableData.urls, Nat.compare, id);
+      ignore BTree.delete(billingStableData.allowances, Nat.compare, id);
       ignore Map.delete(slugToIdMap, Text.compare, url.shortCode);
       #ok(());
     };
@@ -225,6 +325,8 @@ module {
     };
 
     public func toView(url : Url) : UrlView {
+      let allowance = viewAllowance(url.id);
+      let remainingClicks = remainingClicksFor(url, allowance);
       {
         id = url.id;
         originalUrl = url.originalUrl;
@@ -232,6 +334,11 @@ module {
         clicks = url.clicks;
         createdAt = url.createdAt;
         metadata = url.metadata;
+        allowance = {
+          totalPurchasedClicks = allowance.totalPurchasedClicks;
+          remainingClicks = remainingClicks;
+          isActive = remainingClicks > 0;
+        };
       };
     };
 
@@ -242,8 +349,48 @@ module {
       };
     };
 
+    public func toBillingStableData() : BillingStableData {
+      {
+        allowances = billingStableData.allowances;
+      };
+    };
+
     private func isValidUrl(url : Text) : Bool {
       Text.startsWith(url, #text("http://")) or Text.startsWith(url, #text("https://"));
+    };
+
+    private func defaultAllowance() : UrlAllowance {
+      {
+        totalPurchasedClicks = Pricing.minimumPurchaseClicks;
+        remainingClicks = Pricing.minimumPurchaseClicks;
+        lastTopUpAt = 0;
+      };
+    };
+
+    private func viewAllowance(id : Nat) : UrlAllowance {
+      switch (BTree.get(billingStableData.allowances, Nat.compare, id)) {
+        case (?allowance) allowance;
+        case null defaultAllowance();
+      };
+    };
+
+    private func ensurePersistedAllowance(id : Nat) : UrlAllowance {
+      switch (BTree.get(billingStableData.allowances, Nat.compare, id)) {
+        case (?allowance) allowance;
+        case null {
+          let allowance = defaultAllowance();
+          ignore BTree.insert(billingStableData.allowances, Nat.compare, id, allowance);
+          allowance;
+        };
+      };
+    };
+
+    private func remainingClicksFor(url : Url, allowance : UrlAllowance) : Nat {
+      if (allowance.totalPurchasedClicks > url.clicks) {
+        allowance.totalPurchasedClicks - url.clicks;
+      } else {
+        0;
+      };
     };
 
     private func isValidSlug(slug : Text) : Bool {

@@ -963,12 +963,59 @@ main {
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid #00ff00;
+  flex-wrap: wrap;
 }
 
 .stat {
   color: #ffffff;
   font-size: 0.8rem;
   font-family: 'Courier New', monospace;
+}
+
+.stat-status.active {
+  color: #00ff9c;
+}
+
+.stat-status.paused {
+  color: #ffcc00;
+}
+
+.allowance-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid #00ff9c;
+  color: #00ff9c;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.allowance-badge.paused {
+  border-color: #ffcc00;
+  color: #ffcc00;
+}
+
+.billing-panel {
+  padding: 0 0.9rem 0.9rem;
+}
+
+.billing-topup-grid {
+  margin-top: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.billing-actions {
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.billing-actions .wallet-help {
+  flex: 1 1 260px;
+  min-width: 0;
+  margin: 0;
 }
 
 .preview-note {

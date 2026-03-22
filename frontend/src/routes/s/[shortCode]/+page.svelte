@@ -12,6 +12,7 @@
   let description = "Shared via TinyICP.";
   let siteName = "TinyICP";
   let error = "";
+  let inactiveMessage = "";
 
   const removeLoadingShell = () => {
     document.getElementById("redirect-loading-shell")?.remove();
@@ -48,6 +49,31 @@
 
         scheduleRedirect(url.originalUrl);
       } catch (redirectError) {
+        if (
+          redirectError.message?.includes("prepaid click allowance has run out") ||
+          redirectError.message?.includes("paused")
+        ) {
+          inactiveMessage = redirectError.message;
+          redirectUrl = UrlApi.getPublicShortUrl(data.shortCode);
+          title = `TinyICP Link Paused - ${data.shortCode}`;
+          description =
+            "This short URL is inactive because its prepaid click allowance has been exhausted.";
+
+          try {
+            const url = await UrlApi.getPublicUrl(data.shortCode);
+            if (url?.metadata?.siteName) {
+              siteName = url.metadata.siteName;
+            }
+          } catch (lookupError) {
+            console.warn("Failed to load paused short URL details:", lookupError);
+          }
+
+          if (!cancelled) {
+            loading = false;
+          }
+          return;
+        }
+
         error = redirectError.message;
         redirectingViaFallback = true;
         if (!cancelled) {
@@ -73,9 +99,11 @@
 <section class="redirect-shell">
   <div class="redirect-panel">
     <p class="redirect-kicker">{siteName}</p>
-    <h1>Redirecting you to the original URL...</h1>
+    <h1>{inactiveMessage ? "This TinyICP URL is paused" : "Redirecting you to the original URL..."}</h1>
     <p class="redirect-description">
-      {#if redirectingViaFallback}
+      {#if inactiveMessage}
+        {inactiveMessage}
+      {:else if redirectingViaFallback}
         Resolving the final destination through TinyICP.
       {:else if loading}
         Looking up the destination for this short link.
@@ -84,10 +112,16 @@
       {/if}
     </p>
     <p class="redirect-url">{redirectUrl}</p>
-    <p class="redirect-help">
-      If you are not redirected automatically,
-      <a href={redirectUrl} rel="noopener">click here</a>.
-    </p>
+    {#if inactiveMessage}
+      <p class="redirect-help">
+        The owner can reactivate this link at any time by topping it up with more clicks in the TinyICP app.
+      </p>
+    {:else}
+      <p class="redirect-help">
+        If you are not redirected automatically,
+        <a href={redirectUrl} rel="noopener">click here</a>.
+      </p>
+    {/if}
     {#if error}
       <p class="redirect-note">Fallback redirect in progress: {error}</p>
     {:else if redirectingViaFallback}

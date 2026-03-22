@@ -38,12 +38,19 @@ const normalizeMetadata = (metadata) => {
   };
 };
 
+const normalizeAllowance = (allowance) => ({
+  totalPurchasedClicks: Number(allowance.totalPurchasedClicks),
+  remainingClicks: Number(allowance.remainingClicks),
+  isActive: Boolean(allowance.isActive),
+});
+
 const normalizeUrl = (url) => ({
   ...url,
   id: Number(url.id),
   clicks: Number(url.clicks),
   createdAt: Number(url.createdAt),
   metadata: normalizeMetadata(url.metadata),
+  allowance: normalizeAllowance(url.allowance),
 });
 
 const toOptional = (value) => (hasText(value) ? [value.trim()] : []);
@@ -153,7 +160,10 @@ const normalizeWallet = (wallet) => ({
   canisterPrincipal: wallet.canisterPrincipal.toText(),
   balanceE8s: Number(wallet.balanceE8s),
   transferFeeE8s: Number(wallet.transferFeeE8s),
-  tinyUrlPriceE8s: Number(wallet.tinyUrlPriceE8s),
+  clickBundleSize: Number(wallet.clickBundleSize),
+  clickBundlePriceE8s: Number(wallet.clickBundlePriceE8s),
+  minimumPurchaseClicks: Number(wallet.minimumPurchaseClicks),
+  minimumPurchaseCostE8s: Number(wallet.minimumPurchaseCostE8s),
   paymentTargetAccountId: wallet.paymentTargetAccountId,
 });
 
@@ -202,9 +212,13 @@ export class UrlApi {
     return normalizeUrl(unwrapResult(result, "record short URL visit"));
   }
 
-  static async createShortUrl(originalUrl, customSlug = null) {
+  static async createShortUrl(originalUrl, customSlug = null, purchasedClicks) {
     if (!originalUrl || !originalUrl.trim()) {
       throw new Error("Original URL is required");
+    }
+
+    if (!Number.isFinite(purchasedClicks) || purchasedClicks <= 0) {
+      throw new Error("A prepaid click amount is required");
     }
 
     try {
@@ -216,10 +230,21 @@ export class UrlApi {
     const actor = await getBackendActor();
     const result = await actor.create_my_url({
       originalUrl,
+      purchasedClicks: BigInt(purchasedClicks),
       customSlug: customSlug ? [customSlug] : [],
     });
 
     return normalizeUrl(unwrapResult(result, "create short URL"));
+  }
+
+  static async topUpUrl(id, purchasedClicks) {
+    if (!Number.isFinite(purchasedClicks) || purchasedClicks <= 0) {
+      throw new Error("A prepaid click amount is required");
+    }
+
+    const actor = await getBackendActor();
+    const result = await actor.top_up_my_url(BigInt(id), BigInt(purchasedClicks));
+    return normalizeUrl(unwrapResult(result, "top up URL clicks"));
   }
 
   static async deleteUrl(id) {

@@ -29,8 +29,15 @@
     let withdrawalAccountId = "";
     let withdrawalAmountIcp = "";
     let refreshingPreviewIds = [];
+    let purchasedClicks = 10_000;
+    let topUpClicksByUrl = {};
+    let topUpUrlId = null;
     const clickRefreshTimers = new Map();
     const customSlugPattern = /^[A-Za-z0-9_-]+$/;
+    const DEFAULT_CLICK_BUNDLE_SIZE = 10_000;
+    const DEFAULT_CLICK_BUNDLE_PRICE_E8S = 10_000_000;
+    const DEFAULT_MINIMUM_PURCHASE_CLICKS = 10_000;
+    const DEFAULT_LEDGER_FEE_E8S = 10_000;
 
     async function syncAuthState() {
         authLoading = true;
@@ -150,10 +157,16 @@
             return;
         }
 
+        if (!isValidClickPurchase(purchasedClicks)) {
+            error = `Choose at least ${formatClicks(minimumPurchaseClicks)} prepaid clicks in ${formatClicks(clickBundleSize)}-click increments.`;
+            return;
+        }
+
         error = "";
         pendingRequest = {
             originalUrl: newUrl.trim(),
-            customSlug: customSlug.trim() || null
+            customSlug: customSlug.trim() || null,
+            purchasedClicks
         };
         showPurchaseModal = true;
     }
@@ -175,28 +188,35 @@
         try {
             const latestWallet = await UrlApi.getWalletInfo();
             wallet = latestWallet;
+            const requiredBalance =
+                getClickPurchaseCostE8s(pendingRequest.purchasedClicks) +
+                latestWallet.transferFeeE8s;
 
-            if (latestWallet.balanceE8s < latestWallet.tinyUrlPriceE8s + latestWallet.transferFeeE8s) {
+            if (latestWallet.balanceE8s < requiredBalance) {
                 throw new Error(
-                    `You need at least ${formatIcp(latestWallet.tinyUrlPriceE8s + latestWallet.transferFeeE8s)} ICP in your in-app wallet to cover the 1.0 ICP purchase and ledger fee.`
+                    `You need at least ${formatIcp(requiredBalance)} ICP in your in-app wallet to cover this click bundle purchase and the ledger fee.`
                 );
             }
 
             const shortenedUrl = await UrlApi.createShortUrl(
                 pendingRequest.originalUrl,
-                pendingRequest.customSlug
+                pendingRequest.customSlug,
+                pendingRequest.purchasedClicks
             );
             const hydratedUrl = await maybeHydratePreview(shortenedUrl);
             urls = [hydratedUrl, ...urls];
             newUrl = "";
             customSlug = "";
+            purchasedClicks = minimumPurchaseClicks;
             showPurchaseModal = false;
             pendingRequest = null;
             await loadWallet();
 
             const shortCode = hydratedUrl.shortCode;
             const fullShortUrl = getPublicShortUrl(shortCode);
-            showSuccess(`[>] Short URL created: ${fullShortUrl}`);
+            showSuccess(
+                `[>] Short URL created with ${formatClicks(hydratedUrl.allowance.remainingClicks)} prepaid clicks: ${fullShortUrl}`
+            );
         } catch (err) {
             error = "Failed to shorten URL: " + err.message;
             console.error("Error shortening URL:", err);
@@ -282,6 +302,113 @@
     async function syncPreviewViaBrowser(url) {
         const metadata = await UrlApi.harvestMetadataInBrowser(url.originalUrl);
         return await UrlApi.saveUrlMetadata(url.id, metadata);
+    }
+
+    function formatClicks(value) {
+        return Number(value || 0).toLocaleString();
+    }
+
+    function isValidClickPurchase(value) {
+        const numericValue = Number(value);
+        return (
+            Number.isInteger(numericValue) &&
+            numericValue >= minimumPurchaseClicks &&
+            numericValue % clickBundleSize === 0
+        );
+    }
+
+    function getClickPurchaseCostE8s(clickCount) {
+        return (Number(clickCount) / clickBundleSize) * clickBundlePriceE8s;
+    }
+
+    function getClickPurchaseCostIcp(clickCount) {
+        return formatIcp(getClickPurchaseCostE8s(clickCount));
+    }
+
+    function getPurchaseTotalDebitIcp(clickCount) {
+        return formatIcp(
+            getClickPurchaseCostE8s(clickCount) +
+                (wallet?.transferFeeE8s ?? DEFAULT_LEDGER_FEE_E8S)
+        );
+    }
+
+    function getUrlStatusLabel(url) {
+        return url.allowance?.isActive ? "Active" : "Paused";
+    }
+
+    function getUrlStatusClass(url) {
+        return url.allowance?.isActive ? "active" : "paused";
+    }
+
+    function getUrlStatusMessage(url) {
+        if (url.allowance?.isActive) {
+            return `${formatClicks(url.allowance.remainingClicks)} prepaid clicks remaining before this URL pauses.`;
+        }
+
+        return "This URL is paused because its prepaid click balance is empty. Top it up to reactivate it.";
+    }
+
+    function getTopUpClicksValue(urlId) {
+        return topUpClicksByUrl[urlId] ?? minimumPurchaseClicks;
+    }
+
+    function setTopUpClicksValue(urlId, value) {
+        const numericValue = Number(value);
+        topUpClicksByUrl = {
+            ...topUpClicksByUrl,
+            [urlId]:
+                Number.isFinite(numericValue) && numericValue > 0
+                    ? Math.round(numericValue)
+                    : minimumPurchaseClicks
+        };
+    }
+
+    async function topUpUrl(id) {
+        const clickCount = getTopUpClicksValue(id);
+        const currentUrl = urls.find((url) => url.id === id);
+        const wasActive = currentUrl?.allowance?.isActive ?? true;
+
+        if (!isValidClickPurchase(clickCount)) {
+            error = `Top-ups must be at least ${formatClicks(minimumPurchaseClicks)} clicks and use ${formatClicks(clickBundleSize)}-click increments.`;
+            return;
+        }
+
+        loading = true;
+        topUpUrlId = id;
+        error = "";
+
+        try {
+            const latestWallet = await UrlApi.getWalletInfo();
+            wallet = latestWallet;
+            const requiredBalance =
+                getClickPurchaseCostE8s(clickCount) + latestWallet.transferFeeE8s;
+
+            if (latestWallet.balanceE8s < requiredBalance) {
+                throw new Error(
+                    `You need at least ${formatIcp(requiredBalance)} ICP in your in-app wallet to cover this top-up and the ledger fee.`
+                );
+            }
+
+            const updatedUrl = await UrlApi.topUpUrl(id, clickCount);
+            updateUrlInList(updatedUrl);
+            topUpClicksByUrl = {
+                ...topUpClicksByUrl,
+                [id]: minimumPurchaseClicks
+            };
+            await loadWallet();
+
+            showSuccess(
+                wasActive
+                    ? `Added ${formatClicks(clickCount)} clicks to /${updatedUrl.shortCode}.`
+                    : `Reactivated /${updatedUrl.shortCode} with ${formatClicks(clickCount)} new clicks.`
+            );
+        } catch (err) {
+            error = "Failed to top up URL clicks: " + err.message;
+            console.error("Error topping up URL clicks:", err);
+        } finally {
+            loading = false;
+            topUpUrlId = null;
+        }
     }
 
     function updateUrlInList(updatedUrl) {
@@ -517,15 +644,25 @@
         }
     }
 
-    $: purchasePriceIcp = wallet
-        ? formatIcp(wallet.tinyUrlPriceE8s)
-        : formatIcp(100_000_000);
+    $: clickBundleSize = wallet
+        ? wallet.clickBundleSize
+        : DEFAULT_CLICK_BUNDLE_SIZE;
+    $: clickBundlePriceE8s = wallet
+        ? wallet.clickBundlePriceE8s
+        : DEFAULT_CLICK_BUNDLE_PRICE_E8S;
+    $: minimumPurchaseClicks = wallet
+        ? wallet.minimumPurchaseClicks
+        : DEFAULT_MINIMUM_PURCHASE_CLICKS;
+    $: clickBundlePriceIcp = formatIcp(clickBundlePriceE8s);
+    $: minimumPurchaseCostIcp = wallet
+        ? formatIcp(wallet.minimumPurchaseCostE8s)
+        : formatIcp(DEFAULT_CLICK_BUNDLE_PRICE_E8S);
     $: ledgerFeeIcp = wallet
         ? formatIcp(wallet.transferFeeE8s)
-        : formatIcp(10_000);
-    $: totalRequiredIcp = wallet
-        ? formatIcp(wallet.tinyUrlPriceE8s + wallet.transferFeeE8s)
-        : formatIcp(100_010_000);
+        : formatIcp(DEFAULT_LEDGER_FEE_E8S);
+    $: if (!Number.isInteger(purchasedClicks) || purchasedClicks < minimumPurchaseClicks) {
+        purchasedClicks = minimumPurchaseClicks;
+    }
 
     function formatDate(timestamp) {
         const milliseconds = Math.floor(timestamp / 1000000);
@@ -638,9 +775,11 @@
                     </button>
                 </div>
                 <p class="wallet-help">
-                    Your Tiny ICP wallet shows your available balance, deposit
-                    account ID, and withdrawal tools for your authenticated
-                    identity.
+                    Your Tiny ICP wallet funds prepaid click bundles for every
+                    short URL. TinyICP charges {clickBundlePriceIcp} ICP per
+                    {formatClicks(clickBundleSize)} clicks, and URLs pause
+                    automatically whenever their prepaid clicks run out until
+                    you top them up again.
                 </p>
                 {#if walletLoading && !wallet}
                     <div class="wallet-status">Loading your wallet details...</div>
@@ -652,6 +791,15 @@
                             <small>
                                 Deposit ICP into your account ID below to fund
                                 this wallet.
+                            </small>
+                        </div>
+                        <div class="wallet-card">
+                            <span class="wallet-label">Click bundle pricing</span>
+                            <strong>{clickBundlePriceIcp} ICP</strong>
+                            <small>
+                                Buys {formatClicks(clickBundleSize)} clicks.
+                                Minimum purchase: {formatClicks(minimumPurchaseClicks)}
+                                clicks ({minimumPurchaseCostIcp} ICP).
                             </small>
                         </div>
                         <div class="wallet-card full">
@@ -752,19 +900,44 @@
                         >
                     </div>
 
+                    <div class="form-field">
+                        <label for="purchased-clicks" class="form-label"
+                            >Prepaid Clicks</label
+                        >
+                        <input
+                            id="purchased-clicks"
+                            type="number"
+                            min={minimumPurchaseClicks}
+                            step={clickBundleSize}
+                            bind:value={purchasedClicks}
+                            disabled={loading}
+                            class="form-input"
+                        />
+                        <small class="form-help">
+                            {clickBundlePriceIcp} ICP per {formatClicks(clickBundleSize)}
+                            clicks. URLs pause automatically when they hit 0
+                            remaining clicks and can be reactivated any time
+                            with a top-up.
+                        </small>
+                    </div>
+
                     <div class="action-row">
                         <button
                             type="submit"
-                            disabled={loading || !newUrl.trim() || !isValidUrl(newUrl)}
+                            disabled={loading ||
+                                !newUrl.trim() ||
+                                !isValidUrl(newUrl) ||
+                                !isValidClickPurchase(purchasedClicks)}
                             class="shorten-btn"
                         >
                             {loading ? "Shortening..." : "[>] Shorten URL"}
                         </button>
                     </div>
                     <p class="form-help preview-note">
-                        New short URLs are created only through the authenticated
-                        wallet flow, and each purchase now captures destination
-                        page metadata for sharing previews.
+                        New short URLs are created through the authenticated
+                        wallet flow, include prepaid clicks up front, and pause
+                        automatically whenever their allowance runs out until
+                        you top them up again.
                     </p>
                 </form>
             </div>
@@ -779,10 +952,14 @@
                         aria-labelledby="purchase-modal-title"
                     >
                         <p class="auth-kicker">Purchase confirmation</p>
-                        <h2 id="purchase-modal-title">Confirm Tiny URL purchase</h2>
+                        <h2 id="purchase-modal-title">Confirm Tiny URL creation</h2>
                         <p>
-                            Creating this short URL will transfer <strong>{purchasePriceIcp} ICP</strong>
-                            from your in-app wallet to the Tiny ICP payment account before the link is created.
+                            Creating this short URL will transfer
+                            <strong>{getClickPurchaseCostIcp(pendingRequest?.purchasedClicks || minimumPurchaseClicks)} ICP</strong>
+                            from your in-app wallet to prepay
+                            <strong>{formatClicks(pendingRequest?.purchasedClicks || minimumPurchaseClicks)} clicks</strong>.
+                            If those clicks run out, the URL pauses until it is
+                            topped up.
                         </p>
                         <div class="wallet-status">
                             <div><strong>Long URL:</strong> {pendingRequest?.originalUrl}</div>
@@ -790,17 +967,20 @@
                                 <strong>Custom short code:</strong>
                                 {pendingRequest?.customSlug || "Auto-generate one for me"}
                             </div>
-                            <div><strong>Price:</strong> {purchasePriceIcp} ICP</div>
+                            <div><strong>Prepaid clicks:</strong> {formatClicks(pendingRequest?.purchasedClicks || minimumPurchaseClicks)}</div>
+                            <div><strong>Price:</strong> {getClickPurchaseCostIcp(pendingRequest?.purchasedClicks || minimumPurchaseClicks)} ICP</div>
                             <div><strong>Ledger fee:</strong> {ledgerFeeIcp} ICP</div>
                             <div><strong>Wallet balance:</strong> {wallet ? `${formatIcp(wallet.balanceE8s)} ICP` : "Loading..."}</div>
-                            <div><strong>Needed to proceed:</strong> {totalRequiredIcp} ICP</div>
+                            <div><strong>Needed to proceed:</strong> {getPurchaseTotalDebitIcp(pendingRequest?.purchasedClicks || minimumPurchaseClicks)} ICP</div>
                         </div>
                         <div class="action-row modal-actions">
                             <button type="button" class="refresh-btn" on:click={cancelPurchase} disabled={loading}>
                                 Cancel
                             </button>
                             <button type="button" class="shorten-btn" on:click={confirmPurchase} disabled={loading}>
-                                {loading ? "Processing payment..." : `Confirm & Pay ${purchasePriceIcp} ICP`}
+                                {loading
+                                    ? "Processing payment..."
+                                    : `Confirm & Pay ${getClickPurchaseCostIcp(pendingRequest?.purchasedClicks || minimumPurchaseClicks)} ICP`}
                             </button>
                         </div>
                     </div>
@@ -862,9 +1042,107 @@
                                             {getPublicShortUrl(url.shortCode)}
                                         </a>
                                         <div class="url-stats">
-                                            <span class="stat">[HITS] {url.clicks || 0} clicks</span>
+                                            <span class={`stat stat-status ${getUrlStatusClass(url)}`}>
+                                                [STATUS] {getUrlStatusLabel(url)}
+                                            </span>
+                                            <span class="stat">
+                                                [REMAINING] {formatClicks(url.allowance.remainingClicks)} clicks
+                                            </span>
+                                            <span class="stat">[HITS] {formatClicks(url.clicks)} clicks</span>
                                             <span class="stat">[DATE] {formatDate(url.createdAt)}</span>
                                         </div>
+                                        <details class="url-section-toggle">
+                                            <summary class="url-section-summary">
+                                                <span
+                                                    class={`allowance-badge ${getUrlStatusClass(
+                                                        url
+                                                    )}`}
+                                                >
+                                                    {getUrlStatusLabel(url)}
+                                                </span>
+                                                <span class="url-section-hint">
+                                                    {formatClicks(url.allowance.remainingClicks)}
+                                                    prepaid clicks left
+                                                </span>
+                                            </summary>
+                                            <div class="billing-panel">
+                                                <p class="preview-meta">
+                                                    <strong>Prepaid clicks purchased:</strong>
+                                                    {formatClicks(
+                                                        url.allowance.totalPurchasedClicks
+                                                    )}
+                                                </p>
+                                                <p class="preview-meta">
+                                                    <strong>Remaining clicks:</strong>
+                                                    {formatClicks(
+                                                        url.allowance.remainingClicks
+                                                    )}
+                                                </p>
+                                                <p class="preview-meta">
+                                                    <strong>Status:</strong>
+                                                    {getUrlStatusMessage(url)}
+                                                </p>
+                                                <div class="billing-topup-grid">
+                                                    <div class="form-field">
+                                                        <label
+                                                            for={`top-up-clicks-${url.id}`}
+                                                            class="form-label"
+                                                        >
+                                                            Top Up Clicks
+                                                        </label>
+                                                        <input
+                                                            id={`top-up-clicks-${url.id}`}
+                                                            type="number"
+                                                            min={minimumPurchaseClicks}
+                                                            step={clickBundleSize}
+                                                            value={getTopUpClicksValue(url.id)}
+                                                            class="form-input"
+                                                            disabled={loading}
+                                                            on:input={(event) =>
+                                                                setTopUpClicksValue(
+                                                                    url.id,
+                                                                    event.currentTarget
+                                                                        .valueAsNumber
+                                                                )}
+                                                        />
+                                                    </div>
+                                                    <div class="action-row billing-actions">
+                                                        <small class="wallet-help">
+                                                            {clickBundlePriceIcp} ICP per
+                                                            {formatClicks(clickBundleSize)} clicks.
+                                                            Every top-up also includes the
+                                                            {ledgerFeeIcp} ICP ledger fee.
+                                                        </small>
+                                                        <button
+                                                            type="button"
+                                                            class="refresh-btn"
+                                                            on:click={() =>
+                                                                topUpUrl(url.id)}
+                                                            disabled={loading ||
+                                                                !isValidClickPurchase(
+                                                                    getTopUpClicksValue(
+                                                                        url.id
+                                                                    )
+                                                                )}
+                                                        >
+                                                            {topUpUrlId === url.id
+                                                                ? "Processing..."
+                                                                : url.allowance.isActive
+                                                                    ? `Top Up ${getClickPurchaseCostIcp(
+                                                                            getTopUpClicksValue(
+                                                                                url.id
+                                                                            )
+                                                                        )} ICP`
+                                                                    : `Reactivate for ${getClickPurchaseCostIcp(
+                                                                            getTopUpClicksValue(
+                                                                                url.id
+                                                                            )
+                                                                        )} ICP`}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </details>
                                         <details class="url-section-toggle">
                                             <summary class="url-section-summary">
                                                 <span>Link options ({getUrlOptions(url).length})</span>
