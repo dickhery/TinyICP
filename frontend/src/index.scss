@@ -9,6 +9,12 @@ body {
   line-height: 1.6;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 main {
   max-width: 900px;
   margin: 0 auto;
@@ -716,6 +722,7 @@ main {
   box-shadow: none;
   transition: all 0.2s;
   border: 1px solid #00ff00;
+  min-width: 0;
 }
 
 .url-card:hover {
@@ -727,7 +734,9 @@ main {
 .url-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
   margin-bottom: 1rem;
 }
 
@@ -737,12 +746,17 @@ main {
   color: #00ff00;
   font-weight: 600;
   font-family: 'Courier New', 'Monaco', monospace;
+  flex: 1 1 180px;
+  min-width: 0;
 }
 
 .url-actions {
   display: flex;
   gap: 0.5rem;
   align-items: stretch;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex: 0 1 auto;
 }
 
 .url-actions button {
@@ -753,6 +767,8 @@ main {
   justify-content: center;
   white-space: nowrap;
   font-size: 1.1rem;
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 
 .visit-btn {
@@ -802,12 +818,15 @@ main {
   margin: 0.5rem 0;
   color: #ffffff;
   font-size: 0.9rem;
-  word-break: break-all;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .short-url a, .original-url a {
   color: #00aaff;
   text-decoration: none;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .short-url a:hover, .original-url a:hover {
@@ -888,6 +907,7 @@ main {
   margin: 0.75rem 0 0;
   color: #d6ffd6;
   font-size: 0.85rem;
+  overflow-wrap: anywhere;
   word-break: break-word;
 }
 
@@ -1052,9 +1072,17 @@ button[type="submit"] {
   flex-wrap: wrap;
 }
 
+.session-bar > div {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
 .session-bar code {
   color: #66ff66;
-  word-break: break-all;
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 
@@ -1082,10 +1110,27 @@ button[type="submit"] {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .wallet-card.full {
   grid-column: 1 / -1;
+}
+
+.wallet-card code,
+.wallet-status,
+.wallet-help,
+.confirm-modal .wallet-status div {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.wallet-card .copy-btn,
+.session-bar .refresh-btn,
+.wallet-actions .refresh-btn {
+  align-self: flex-start;
+  max-width: 100%;
 }
 
 .wallet-label,
@@ -1162,4 +1207,76 @@ button[type="submit"] {
 .wallet-actions {
   justify-content: space-between;
   align-items: center;
+  gap: 1rem;
+}
+
+.wallet-actions .wallet-help {
+  flex: 1 1 320px;
+  min-width: 0;
+  margin: 0;
+}
+
+.redirect-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: #000;
+}
+
+.redirect-panel {
+  width: min(640px, 100%);
+  border: 1px solid #00ff9c;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.92);
+  box-shadow: 0 0 24px rgba(0, 255, 156, 0.15);
+  text-align: center;
+}
+
+.redirect-kicker {
+  margin: 0 0 1rem;
+  color: #8fffd2;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+.redirect-panel h1 {
+  margin: 0 0 1rem;
+  color: #00ff9c;
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+}
+
+.redirect-description,
+.redirect-help,
+.redirect-note {
+  color: #d7fff0;
+}
+
+.redirect-url {
+  margin: 1.25rem 0;
+  padding: 0.85rem 1rem;
+  border: 1px dashed rgba(143, 255, 210, 0.45);
+  background: rgba(0, 255, 156, 0.06);
+  color: #d7fff0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.redirect-help a {
+  color: #8fffd2;
+}
+
+.redirect-help a:hover {
+  color: #c9ffe9;
+}
+
+@media (max-width: 768px) {
+  .redirect-shell {
+    padding: 20px 12px;
+  }
+
+  .redirect-panel {
+    padding: 24px 20px;
+  }
 }

@@ -54,6 +54,7 @@ const idlFactory = ({ IDL }) => {
   return IDL.Service({
     create_my_url: IDL.Func([CreateRequest], [ResultUrl], []),
     delete_my_url: IDL.Func([IDL.Nat], [ResultUnit], []),
+    get_public_url: IDL.Func([IDL.Text], [IDL.Opt(UrlView)], ['query']),
     get_wallet_info: IDL.Func([], [WalletInfo], []),
     list_my_urls: IDL.Func([], [IDL.Vec(UrlView)], ['query']),
     refresh_all_missing_metadata: IDL.Func([], [ResultNat], []),

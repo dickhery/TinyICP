@@ -69,6 +69,13 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     urlStore.getUrlsByOwner(caller);
   };
 
+  public query func get_public_url(shortCode : Text) : async ?UrlStore.UrlView {
+    switch (urlStore.getUrlByShortCode(shortCode)) {
+      case (?url) ?urlStore.toView(url);
+      case null null;
+    };
+  };
+
   public shared ({ caller }) func get_wallet_info() : async IcpLedger.WalletInfo {
     assertAuthenticated(caller);
     await IcpLedger.getWalletInfo(canisterPrincipal, caller);

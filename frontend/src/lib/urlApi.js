@@ -1,38 +1,9 @@
-import { building } from "$app/environment";
-import { canisterId } from "./canisters.js";
 import { getBackendActor } from "./backendActor.js";
-
-const getHostEnvironment = () => {
-  if (typeof window === "undefined") {
-    return { kind: "local", port: "4943" };
-  }
-
-  const { hostname, port } = window.location;
-  const isLocalHost =
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname.endsWith(".localhost");
-
-  return {
-    kind: isLocalHost ? "local" : "ic",
-    port: port || "4943",
-  };
-};
-
-const getBaseUrl = (raw = true) => {
-  if (building || process.env.NODE_ENV === "test") {
-    return "/";
-  }
-
-  const { kind, port } = getHostEnvironment();
-  const canisterIdAndRaw = raw ? `${canisterId}.raw` : canisterId;
-
-  if (kind === "local") {
-    return `http://${canisterIdAndRaw}.localhost:${port}`;
-  }
-
-  return `https://${canisterIdAndRaw}.icp0.io`;
-};
+import {
+  buildShortLink,
+  getBackendOrigin,
+  getPublicShortLinkOrigin,
+} from "./urlConfig.js";
 
 const unwrapResult = (result, action) => {
   if ("ok" in result) {
@@ -206,6 +177,16 @@ export class UrlApi {
     return urls.map(normalizeUrl);
   }
 
+  static async getPublicUrl(shortCode) {
+    if (!hasText(shortCode)) {
+      throw new Error("Short code is required");
+    }
+
+    const actor = await getBackendActor();
+    const url = unwrapOptional(await actor.get_public_url(shortCode.trim()));
+    return url ? normalizeUrl(url) : null;
+  }
+
   static async getWalletInfo() {
     const actor = await getBackendActor();
     return normalizeWallet(await actor.get_wallet_info());
@@ -303,12 +284,20 @@ export class UrlApi {
     unwrapResult(result, "withdraw ICP from wallet");
   }
 
+  static getPublicShortUrl(shortCode) {
+    return buildShortLink(getPublicShortLinkOrigin(), shortCode);
+  }
+
   static getShortUrl(shortCode) {
-    return `${getBaseUrl(false)}/s/${shortCode}`;
+    return this.getPublicShortUrl(shortCode);
+  }
+
+  static getBackendShortUrl(shortCode, raw = false) {
+    return buildShortLink(getBackendOrigin(raw), shortCode);
   }
 
   static async getUrlStats(shortCode) {
-    const response = await fetch(`${getBaseUrl()}/s/${shortCode}/stats`, {
+    const response = await fetch(`${this.getBackendShortUrl(shortCode, true)}/stats`, {
       method: "GET",
       headers: {
         Accept: "application/json",

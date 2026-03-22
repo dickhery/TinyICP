@@ -2,7 +2,6 @@
     import "../index.scss";
     import { onMount } from "svelte";
     import UrlApi, { formatIcp } from "$lib/urlApi.js";
-    import { canisterId } from "$lib/canisters.js";
     import {
         getPrincipalText,
         isAuthenticated,
@@ -31,27 +30,6 @@
     let withdrawalAmountIcp = "";
     let refreshingPreviewIds = [];
     const customSlugPattern = /^[A-Za-z0-9_-]+$/;
-
-    function getBackendBaseUrl(raw = true) {
-        const canisterIdAndRaw = raw ? `${canisterId}.raw` : canisterId;
-
-        if (typeof window === "undefined") {
-            return `http://${canisterIdAndRaw}.localhost:4943`;
-        }
-
-        const hostname = window.location.hostname;
-        const port = window.location.port || "4943";
-        const isLocal =
-            hostname === "localhost" ||
-            hostname === "127.0.0.1" ||
-            hostname.endsWith(".localhost");
-
-        if (isLocal) {
-            return `http://${canisterIdAndRaw}.localhost:${port}`;
-        }
-
-        return `https://${canisterIdAndRaw}.icp0.io`;
-    }
 
     async function syncAuthState() {
         authLoading = true;
@@ -306,7 +284,7 @@
     }
 
     function getPublicShortUrl(shortCode) {
-        return `${getBackendBaseUrl(false)}/s/${shortCode}`;
+        return UrlApi.getPublicShortUrl(shortCode);
     }
 
     function hasText(value) {
