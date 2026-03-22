@@ -57,6 +57,7 @@ const idlFactory = ({ IDL }) => {
     get_public_url: IDL.Func([IDL.Text], [IDL.Opt(UrlView)], ['query']),
     get_wallet_info: IDL.Func([], [WalletInfo], []),
     list_my_urls: IDL.Func([], [IDL.Vec(UrlView)], ['query']),
+    record_short_link_visit: IDL.Func([IDL.Text], [ResultUrl], []),
     refresh_all_missing_metadata: IDL.Func([], [ResultNat], []),
     refresh_my_url_metadata: IDL.Func([IDL.Nat], [ResultUrl], []),
     save_my_url_metadata: IDL.Func([IDL.Nat, UrlMetadata], [ResultUrl], []),

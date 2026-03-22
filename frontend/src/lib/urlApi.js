@@ -192,6 +192,16 @@ export class UrlApi {
     return normalizeWallet(await actor.get_wallet_info());
   }
 
+  static async recordShortLinkVisit(shortCode) {
+    if (!hasText(shortCode)) {
+      throw new Error("Short code is required");
+    }
+
+    const actor = await getBackendActor();
+    const result = await actor.record_short_link_visit(shortCode.trim());
+    return normalizeUrl(unwrapResult(result, "record short URL visit"));
+  }
+
   static async createShortUrl(originalUrl, customSlug = null) {
     if (!originalUrl || !originalUrl.trim()) {
       throw new Error("Original URL is required");

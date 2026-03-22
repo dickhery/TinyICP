@@ -1185,6 +1185,11 @@ button[type="submit"] {
 
 .auth-btn {
   margin-top: 1.5rem;
+  width: min(100%, 320px);
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .auth-footnote {
@@ -1411,5 +1416,12 @@ button[type="submit"] {
 
   .redirect-panel {
     padding: 24px 20px;
+  }
+
+  .shorten-btn {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    white-space: normal;
   }
 }

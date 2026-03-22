@@ -29,6 +29,7 @@
     let withdrawalAccountId = "";
     let withdrawalAmountIcp = "";
     let refreshingPreviewIds = [];
+    const clickRefreshTimers = new Map();
     const customSlugPattern = /^[A-Za-z0-9_-]+$/;
 
     async function syncAuthState() {
@@ -283,6 +284,36 @@
         return await UrlApi.saveUrlMetadata(url.id, metadata);
     }
 
+    function updateUrlInList(updatedUrl) {
+        urls = urls.map((url) => (url.id === updatedUrl.id ? updatedUrl : url));
+    }
+
+    function scheduleClickRefresh(shortCode) {
+        if (!shortCode || typeof window === "undefined") {
+            return;
+        }
+
+        const existingTimer = clickRefreshTimers.get(shortCode);
+        if (existingTimer) {
+            window.clearTimeout(existingTimer);
+        }
+
+        const timeoutId = window.setTimeout(async () => {
+            clickRefreshTimers.delete(shortCode);
+
+            try {
+                const updatedUrl = await UrlApi.getPublicUrl(shortCode);
+                if (updatedUrl) {
+                    updateUrlInList(updatedUrl);
+                }
+            } catch (refreshError) {
+                console.warn("Failed to refresh click count:", refreshError);
+            }
+        }, 1200);
+
+        clickRefreshTimers.set(shortCode, timeoutId);
+    }
+
     function getPublicShortUrl(shortCode) {
         return UrlApi.getPublicShortUrl(shortCode);
     }
@@ -412,8 +443,9 @@
         }, 2000);
     }
 
-    function openUrl(url) {
-        window.open(url, "_blank");
+    function openUrl(url, shortCode = null) {
+        window.open(url, "_blank", "noopener");
+        scheduleClickRefresh(shortCode);
     }
 
     function handleKeydown(event) {
@@ -515,6 +547,10 @@
 
         return () => {
             document.removeEventListener("keydown", handleKeydown);
+            for (const timeoutId of clickRefreshTimers.values()) {
+                window.clearTimeout(timeoutId);
+            }
+            clickRefreshTimers.clear();
         };
     });
 </script>
@@ -797,7 +833,10 @@
                                             <button
                                                 class="visit-btn"
                                                 on:click={() =>
-                                                    openUrl(getPublicShortUrl(url.shortCode))}
+                                                    openUrl(
+                                                        getPublicShortUrl(url.shortCode),
+                                                        url.shortCode
+                                                    )}
                                             >
                                                 ↗
                                             </button>
@@ -817,6 +856,8 @@
                                             target="_blank"
                                             rel="noopener"
                                             class="url-primary-link"
+                                            on:click={() =>
+                                                scheduleClickRefresh(url.shortCode)}
                                         >
                                             {getPublicShortUrl(url.shortCode)}
                                         </a>
@@ -863,6 +904,12 @@
                                                             class="url-link-anchor"
                                                             class:original-link={option.key ===
                                                                 "original"}
+                                                            on:click={() =>
+                                                                scheduleClickRefresh(
+                                                                    option.key === "original"
+                                                                        ? null
+                                                                        : url.shortCode
+                                                                )}
                                                         >
                                                             {option.href}
                                                         </a>

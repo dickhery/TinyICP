@@ -76,6 +76,13 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     };
   };
 
+  public shared func record_short_link_visit(shortCode : Text) : async Result.Result<UrlStore.UrlView, Text> {
+    switch (urlStore.incrementClicks(shortCode)) {
+      case (?url) #ok(urlStore.toView(url));
+      case null #err("Short URL not found");
+    };
+  };
+
   public shared ({ caller }) func get_wallet_info() : async IcpLedger.WalletInfo {
     assertAuthenticated(caller);
     await IcpLedger.getWalletInfo(canisterPrincipal, caller);

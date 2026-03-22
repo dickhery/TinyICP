@@ -30,7 +30,7 @@
       removeLoadingShell();
 
       try {
-        const url = await UrlApi.getPublicUrl(data.shortCode);
+        const url = await UrlApi.recordShortLinkVisit(data.shortCode);
         if (!url) {
           redirectingViaFallback = true;
           scheduleRedirect(UrlApi.getBackendShortUrl(data.shortCode), 150);
