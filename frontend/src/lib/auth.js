@@ -1,7 +1,7 @@
 import { AuthClient } from '@dfinity/auth-client';
 import { building } from '$app/environment';
 
-const MAINNET_II_URL = 'https://identity.ic0.app';
+const MAINNET_II_URL = 'https://id.ai';
 
 let authClientPromise;
 
