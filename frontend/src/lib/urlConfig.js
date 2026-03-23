@@ -79,3 +79,11 @@ export const buildShortLink = (origin, shortCode) => {
 
   return `${origin.replace(/\/+$/, "")}${path}`;
 };
+
+export const buildShortLinkPrefix = (origin) => {
+  if (origin === "/") {
+    return "/s/";
+  }
+
+  return `${origin.replace(/\/+$/, "")}/s/`;
+};

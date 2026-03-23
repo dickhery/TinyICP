@@ -1018,6 +1018,119 @@ main {
   margin: 0;
 }
 
+.short-link-preview-card {
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.95rem 1rem;
+  border: 1px dashed rgba(0, 255, 0, 0.5);
+  background: rgba(0, 255, 0, 0.05);
+}
+
+.short-link-preview-card.ready {
+  border-color: #00ff9c;
+  background: rgba(0, 255, 156, 0.08);
+}
+
+.short-link-preview-card.checking {
+  border-color: #00ffff;
+  background: rgba(0, 255, 255, 0.07);
+}
+
+.short-link-preview-card.taken,
+.short-link-preview-card.invalid,
+.short-link-preview-card.error {
+  border-color: #ff6666;
+  background: rgba(255, 102, 102, 0.08);
+}
+
+.short-link-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.short-link-preview-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid #00ff00;
+  color: #00ff00;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.short-link-preview-badge.ready {
+  border-color: #00ff9c;
+  color: #00ff9c;
+}
+
+.short-link-preview-badge.checking {
+  border-color: #00ffff;
+  color: #00ffff;
+}
+
+.short-link-preview-badge.taken,
+.short-link-preview-badge.invalid,
+.short-link-preview-badge.error {
+  border-color: #ff6666;
+  color: #ff8888;
+}
+
+.short-link-preview-source {
+  color: #d6ffd6;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.short-link-preview-url {
+  display: block;
+  margin-top: 0.85rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(0, 255, 0, 0.35);
+  background: #020f02;
+  color: #8fffd2;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.short-link-preview-prefix {
+  color: #66ff66;
+}
+
+.short-link-preview-placeholder {
+  color: #7a9d7a;
+  font-style: italic;
+}
+
+.short-link-preview-help {
+  margin-top: 0.7rem;
+  text-align: left;
+  color: #d6ffd6;
+}
+
+.short-link-preview-help.ready {
+  color: #aaf7cf;
+}
+
+.short-link-preview-help.checking {
+  color: #9defff;
+}
+
+.short-link-preview-help.taken,
+.short-link-preview-help.invalid,
+.short-link-preview-help.error {
+  color: #ffb1b1;
+}
+
+.payment-preview-card {
+  margin: 1.25rem 0;
+}
+
 .preview-note {
   margin: 1rem 0 0;
   color: #d6ffd6;
@@ -1355,18 +1468,24 @@ button[type="submit"] {
   background: rgba(0, 0, 0, 0.82);
   backdrop-filter: blur(4px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 1rem;
+  overflow-y: auto;
   z-index: 1000;
 }
 
 .confirm-modal {
   width: min(640px, 100%);
+  max-height: calc(100vh - 2rem);
   border: 2px solid #00ff00;
   background: radial-gradient(circle at top, rgba(0, 255, 0, 0.08), transparent 55%), #000;
   padding: 2rem;
   box-shadow: 0 0 24px rgba(0, 255, 0, 0.25);
+  margin: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .confirm-modal h2 {
@@ -1384,6 +1503,10 @@ button[type="submit"] {
 
 .modal-actions {
   justify-content: flex-end;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(0, 255, 0, 0.28);
+  background: transparent;
 }
 
 .danger-modal {
@@ -1522,6 +1645,16 @@ button[type="submit"] {
 
   .redirect-panel {
     padding: 24px 20px;
+  }
+
+  .modal-backdrop {
+    padding: 0.75rem;
+  }
+
+  .confirm-modal {
+    width: 100%;
+    max-height: calc(100vh - 1.5rem);
+    padding: 1.25rem;
   }
 
   .shorten-btn {

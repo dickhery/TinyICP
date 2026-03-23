@@ -33,12 +33,27 @@
     let purchasedClicks = 10_000;
     let topUpClicksByUrl = {};
     let topUpUrlId = null;
+    let autoShortCodePreview = "";
+    let autoShortCodePreviewLoading = false;
+    let autoShortCodePreviewError = "";
+    let customShortCodeStatus = "idle";
+    let customShortCodeMessage = "";
+    let trimmedCustomSlug = "";
+    let isUsingCustomShortCode = false;
+    let shortCodePreviewValue = "";
+    let shortCodePreviewStatus = "idle";
+    let shortCodePreviewMessage = "";
+    let canSubmitShorten = false;
     const clickRefreshTimers = new Map();
     const customSlugPattern = /^[A-Za-z0-9_-]+$/;
     const DEFAULT_CLICK_BUNDLE_SIZE = 10_000;
     const DEFAULT_CLICK_BUNDLE_PRICE_E8S = 10_000_000;
     const DEFAULT_MINIMUM_PURCHASE_CLICKS = 10_000;
     const DEFAULT_LEDGER_FEE_E8S = 10_000;
+    const SHORT_CODE_CHECK_DEBOUNCE_MS = 250;
+    let shortCodeCheckTimer = null;
+    let shortCodeCheckRequestId = 0;
+    let autoShortCodePreviewRequestId = 0;
 
     async function syncAuthState() {
         authLoading = true;
@@ -50,16 +65,22 @@
             principal = authenticated ? await getPrincipalText() : "";
 
             if (authenticated) {
-                await Promise.all([loadUrls(), loadWallet()]);
+                await Promise.all([
+                    loadUrls(),
+                    loadWallet(),
+                    refreshAutoShortCodePreview()
+                ]);
             } else {
                 urls = [];
                 wallet = null;
+                resetShortCodePreviewState();
             }
         } catch (err) {
             authenticated = false;
             principal = "";
             wallet = null;
             walletError = "";
+            resetShortCodePreviewState();
             error = "Failed to initialize authentication: " + err.message;
         } finally {
             authLoading = false;
@@ -126,6 +147,7 @@
             urls = [];
             wallet = null;
             walletError = "";
+            resetShortCodePreviewState();
             showSuccess("Signed out successfully");
         } catch (err) {
             error = "Failed to sign out: " + err.message;
@@ -152,7 +174,8 @@
             return;
         }
 
-        if (customSlug.trim() && !customSlugPattern.test(customSlug.trim())) {
+        const requestedCustomSlug = customSlug.trim();
+        if (requestedCustomSlug && !customSlugPattern.test(requestedCustomSlug)) {
             error =
                 "Custom short codes can use only letters, numbers, hyphens, and underscores.";
             return;
@@ -163,10 +186,48 @@
             return;
         }
 
+        let previewShortCode = "";
+
+        if (requestedCustomSlug) {
+            const isAvailable =
+                customShortCodeStatus === "ready"
+                    ? true
+                    : await updateCustomShortCodeAvailability(requestedCustomSlug);
+
+            if (!isAvailable) {
+                error =
+                    customShortCodeStatus === "taken"
+                        ? "That custom short code is already taken. Choose another one before continuing."
+                        : customShortCodeMessage ||
+                          "We couldn't verify that custom short code right now.";
+                return;
+            }
+
+            try {
+                previewShortCode = await UrlApi.reserveShortCodePreview(
+                    requestedCustomSlug
+                );
+            } catch (err) {
+                error = "Failed to reserve your custom short code preview: " + err.message;
+                return;
+            }
+        } else {
+            previewShortCode =
+                (await refreshAutoShortCodePreview()) || autoShortCodePreview;
+
+            if (!previewShortCode) {
+                error =
+                    autoShortCodePreviewError ||
+                    "Failed to reserve an auto-generated short code preview.";
+                return;
+            }
+        }
+
         error = "";
         pendingRequest = {
             originalUrl: newUrl.trim(),
-            customSlug: customSlug.trim() || null,
+            customSlug: requestedCustomSlug || null,
+            previewShortCode,
             purchasedClicks
         };
         showPurchaseModal = true;
@@ -212,6 +273,7 @@
             showPurchaseModal = false;
             pendingRequest = null;
             await loadWallet();
+            await refreshAutoShortCodePreview();
 
             const shortCode = hydratedUrl.shortCode;
             const fullShortUrl = getPublicShortUrl(shortCode);
@@ -316,6 +378,210 @@
     async function syncPreviewViaBrowser(url) {
         const metadata = await UrlApi.harvestMetadataInBrowser(url.originalUrl);
         return await UrlApi.saveUrlMetadata(url.id, metadata);
+    }
+
+    function resetShortCodePreviewState() {
+        clearShortCodeCheckTimer();
+        autoShortCodePreview = "";
+        autoShortCodePreviewLoading = false;
+        autoShortCodePreviewError = "";
+        customShortCodeStatus = "idle";
+        customShortCodeMessage = "";
+        shortCodeCheckRequestId = 0;
+        autoShortCodePreviewRequestId = 0;
+    }
+
+    function clearShortCodeCheckTimer() {
+        if (shortCodeCheckTimer && typeof clearTimeout === "function") {
+            clearTimeout(shortCodeCheckTimer);
+        }
+
+        shortCodeCheckTimer = null;
+    }
+
+    function isValidCustomSlug(slug) {
+        return hasText(slug) && customSlugPattern.test(slug);
+    }
+
+    function getAutoShortCodePreviewStatus() {
+        if (autoShortCodePreviewLoading) {
+            return "checking";
+        }
+
+        if (autoShortCodePreviewError) {
+            return "error";
+        }
+
+        if (autoShortCodePreview) {
+            return "ready";
+        }
+
+        return "idle";
+    }
+
+    function getAutoShortCodePreviewMessage() {
+        if (autoShortCodePreviewLoading) {
+            return "Reserving the auto-generated short code for your next TinyICP URL...";
+        }
+
+        if (autoShortCodePreviewError) {
+            return autoShortCodePreviewError;
+        }
+
+        if (autoShortCodePreview) {
+            return "This auto-generated short code is reserved for your next purchase.";
+        }
+
+        return "Your auto-generated TinyICP URL will appear here before payment.";
+    }
+
+    function getShortCodePreviewStatusLabel(status, usingCustomShortCode) {
+        switch (status) {
+            case "ready":
+                return usingCustomShortCode ? "Available" : "Reserved";
+            case "checking":
+                return usingCustomShortCode ? "Checking" : "Reserving";
+            case "taken":
+                return "Taken";
+            case "invalid":
+                return "Invalid";
+            case "error":
+                return "Unavailable";
+            default:
+                return usingCustomShortCode ? "Custom Preview" : "Auto Preview";
+        }
+    }
+
+    function getShortCodePreviewPlaceholder(status, usingCustomShortCode) {
+        if (status === "checking") {
+            return "checking-code";
+        }
+
+        if (usingCustomShortCode) {
+            return "enter-a-code";
+        }
+
+        return "auto-code-preview";
+    }
+
+    function isShortCodeReadyForPurchase() {
+        if (isUsingCustomShortCode) {
+            return customShortCodeStatus === "ready";
+        }
+
+        return Boolean(autoShortCodePreview) && !autoShortCodePreviewLoading;
+    }
+
+    async function refreshAutoShortCodePreview() {
+        if (!authenticated) {
+            autoShortCodePreview = "";
+            autoShortCodePreviewError = "";
+            autoShortCodePreviewLoading = false;
+            return null;
+        }
+
+        const requestId = ++autoShortCodePreviewRequestId;
+        autoShortCodePreviewLoading = true;
+        autoShortCodePreviewError = "";
+
+        try {
+            const shortCode = await UrlApi.reserveShortCodePreview();
+            if (requestId !== autoShortCodePreviewRequestId) {
+                return null;
+            }
+
+            autoShortCodePreview = shortCode;
+            return shortCode;
+        } catch (err) {
+            if (requestId !== autoShortCodePreviewRequestId) {
+                return null;
+            }
+
+            autoShortCodePreview = "";
+            autoShortCodePreviewError =
+                "We couldn't reserve an auto-generated short code right now.";
+            console.error("Error reserving auto-generated short code:", err);
+            return null;
+        } finally {
+            if (requestId === autoShortCodePreviewRequestId) {
+                autoShortCodePreviewLoading = false;
+            }
+        }
+    }
+
+    async function updateCustomShortCodeAvailability(shortCode, requestId = null) {
+        try {
+            const isAvailable =
+                await UrlApi.checkShortCodeAvailability(shortCode);
+            if (
+                requestId !== null &&
+                requestId !== shortCodeCheckRequestId
+            ) {
+                return isAvailable;
+            }
+
+            customShortCodeStatus = isAvailable ? "ready" : "taken";
+            customShortCodeMessage = isAvailable
+                ? "Available now. TinyICP will reserve this custom short code before you pay."
+                : "That custom short code is already taken. Try another one.";
+            return isAvailable;
+        } catch (err) {
+            if (
+                requestId !== null &&
+                requestId !== shortCodeCheckRequestId
+            ) {
+                return false;
+            }
+
+            customShortCodeStatus = "error";
+            customShortCodeMessage =
+                "We couldn't verify that custom short code right now.";
+            console.error("Error checking short code availability:", err);
+            return false;
+        }
+    }
+
+    function syncShortCodePreview(isAuthenticated, shortCode) {
+        clearShortCodeCheckTimer();
+
+        if (!isAuthenticated) {
+            customShortCodeStatus = "idle";
+            customShortCodeMessage = "";
+            return;
+        }
+
+        if (!hasText(shortCode)) {
+            customShortCodeStatus = "idle";
+            customShortCodeMessage = "";
+
+            if (
+                (!autoShortCodePreview || autoShortCodePreviewError) &&
+                !autoShortCodePreviewLoading
+            ) {
+                void refreshAutoShortCodePreview();
+            }
+            return;
+        }
+
+        if (!isValidCustomSlug(shortCode)) {
+            customShortCodeStatus = "invalid";
+            customShortCodeMessage =
+                "Custom short codes can use only letters, numbers, hyphens, and underscores.";
+            return;
+        }
+
+        customShortCodeStatus = "checking";
+        customShortCodeMessage =
+            "Checking whether this custom short code is still available...";
+
+        const requestId = ++shortCodeCheckRequestId;
+        shortCodeCheckTimer = setTimeout(() => {
+            void updateCustomShortCodeAvailability(shortCode, requestId);
+        }, SHORT_CODE_CHECK_DEBOUNCE_MS);
+    }
+
+    function getPublicShortUrlPrefix() {
+        return UrlApi.getPublicShortUrlPrefix();
     }
 
     function formatClicks(value) {
@@ -687,6 +953,24 @@
     $: if (!Number.isInteger(purchasedClicks) || purchasedClicks < minimumPurchaseClicks) {
         purchasedClicks = minimumPurchaseClicks;
     }
+    $: trimmedCustomSlug = customSlug.trim();
+    $: isUsingCustomShortCode = trimmedCustomSlug.length > 0;
+    $: shortCodePreviewValue = isUsingCustomShortCode
+        ? trimmedCustomSlug
+        : autoShortCodePreview;
+    $: shortCodePreviewStatus = isUsingCustomShortCode
+        ? customShortCodeStatus
+        : getAutoShortCodePreviewStatus();
+    $: shortCodePreviewMessage = isUsingCustomShortCode
+        ? customShortCodeMessage
+        : getAutoShortCodePreviewMessage();
+    $: canSubmitShorten =
+        !loading &&
+        Boolean(newUrl.trim()) &&
+        isValidUrl(newUrl) &&
+        isValidClickPurchase(purchasedClicks) &&
+        isShortCodeReadyForPurchase();
+    $: syncShortCodePreview(authenticated, trimmedCustomSlug);
 
     function formatDate(timestamp) {
         const milliseconds = Math.floor(timestamp / 1000000);
@@ -708,6 +992,7 @@
 
         return () => {
             document.removeEventListener("keydown", handleKeydown);
+            clearShortCodeCheckTimer();
             for (const timeoutId of clickRefreshTimers.values()) {
                 window.clearTimeout(timeoutId);
             }
@@ -922,6 +1207,45 @@
                         <small class="form-help"
                             >Letters, numbers, hyphens, and underscores only</small
                         >
+                        <div
+                            class={`short-link-preview-card ${shortCodePreviewStatus}`}
+                        >
+                            <div class="short-link-preview-header">
+                                <span
+                                    class={`short-link-preview-badge ${shortCodePreviewStatus}`}
+                                >
+                                    {getShortCodePreviewStatusLabel(
+                                        shortCodePreviewStatus,
+                                        isUsingCustomShortCode
+                                    )}
+                                </span>
+                                <span class="short-link-preview-source">
+                                    {isUsingCustomShortCode
+                                        ? "Custom short code"
+                                        : "Auto-generated short code"}
+                                </span>
+                            </div>
+                            <code class="short-link-preview-url">
+                                <span class="short-link-preview-prefix">
+                                    {getPublicShortUrlPrefix()}
+                                </span>
+                                {#if shortCodePreviewValue}
+                                    <span>{shortCodePreviewValue}</span>
+                                {:else}
+                                    <span class="short-link-preview-placeholder">
+                                        {getShortCodePreviewPlaceholder(
+                                            shortCodePreviewStatus,
+                                            isUsingCustomShortCode
+                                        )}
+                                    </span>
+                                {/if}
+                            </code>
+                            <small
+                                class={`form-help short-link-preview-help ${shortCodePreviewStatus}`}
+                            >
+                                {shortCodePreviewMessage}
+                            </small>
+                        </div>
                     </div>
 
                     <div class="form-field">
@@ -948,10 +1272,7 @@
                     <div class="action-row">
                         <button
                             type="submit"
-                            disabled={loading ||
-                                !newUrl.trim() ||
-                                !isValidUrl(newUrl) ||
-                                !isValidClickPurchase(purchasedClicks)}
+                            disabled={!canSubmitShorten}
                             class="shorten-btn"
                         >
                             {loading ? "Shortening..." : "[>] Shorten URL"}
@@ -985,8 +1306,37 @@
                             If those clicks run out, the URL pauses until it is
                             topped up.
                         </p>
+                        <div class="short-link-preview-card ready payment-preview-card">
+                            <div class="short-link-preview-header">
+                                <span class="short-link-preview-badge ready">
+                                    {pendingRequest?.customSlug
+                                        ? "Reserved Custom URL"
+                                        : "Reserved Auto URL"}
+                                </span>
+                                <span class="short-link-preview-source">
+                                    This is the TinyICP URL you are about to pay for
+                                </span>
+                            </div>
+                            <code class="short-link-preview-url">
+                                <span class="short-link-preview-prefix">
+                                    {getPublicShortUrlPrefix()}
+                                </span>
+                                <span>{pendingRequest?.previewShortCode}</span>
+                            </code>
+                            <small class="form-help short-link-preview-help ready">
+                                {pendingRequest?.customSlug
+                                    ? "Your custom short code is reserved for this checkout step."
+                                    : "This auto-generated short code is reserved for this checkout step."}
+                            </small>
+                        </div>
                         <div class="wallet-status">
                             <div><strong>Long URL:</strong> {pendingRequest?.originalUrl}</div>
+                            <div>
+                                <strong>TinyICP URL:</strong>
+                                {pendingRequest?.previewShortCode
+                                    ? getPublicShortUrl(pendingRequest.previewShortCode)
+                                    : "Preparing preview..."}
+                            </div>
                             <div>
                                 <strong>Custom short code:</strong>
                                 {pendingRequest?.customSlug || "Auto-generate one for me"}

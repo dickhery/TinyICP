@@ -1,6 +1,7 @@
 import { getBackendActor } from "./backendActor.js";
 import {
   buildShortLink,
+  buildShortLinkPrefix,
   getBackendOrigin,
   getPublicShortLinkOrigin,
 } from "./urlConfig.js";
@@ -259,6 +260,30 @@ export class UrlApi {
     return normalizeUrl(unwrapResult(result, "refresh preview metadata"));
   }
 
+  static async checkShortCodeAvailability(shortCode) {
+    if (!hasText(shortCode)) {
+      throw new Error("Short code is required");
+    }
+
+    const actor = await getBackendActor();
+    return unwrapResult(
+      await actor.check_short_code_availability(shortCode.trim()),
+      "check short code availability",
+    );
+  }
+
+  static async reserveAutoShortCodePreview() {
+    return this.reserveShortCodePreview(null);
+  }
+
+  static async reserveShortCodePreview(shortCode = null) {
+    const actor = await getBackendActor();
+    return unwrapResult(
+      await actor.reserve_short_code_preview(shortCode ? [shortCode.trim()] : []),
+      "reserve short code preview",
+    );
+  }
+
   static async saveUrlMetadata(id, metadata) {
     const actor = await getBackendActor();
     const result = await actor.save_my_url_metadata(
@@ -321,6 +346,10 @@ export class UrlApi {
 
   static getPublicShortUrl(shortCode) {
     return buildShortLink(getPublicShortLinkOrigin(), shortCode);
+  }
+
+  static getPublicShortUrlPrefix() {
+    return buildShortLinkPrefix(getPublicShortLinkOrigin());
   }
 
   static getShortUrl(shortCode) {
