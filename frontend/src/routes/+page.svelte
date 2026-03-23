@@ -276,7 +276,7 @@
             await refreshAutoShortCodePreview();
 
             const shortCode = hydratedUrl.shortCode;
-            const fullShortUrl = getShareShortUrl(shortCode);
+            const fullShortUrl = getPublicShortUrl(shortCode);
             showSuccess(
                 `[>] Short URL created with ${formatClicks(hydratedUrl.allowance.remainingClicks)} prepaid clicks: ${fullShortUrl}`
             );
@@ -580,8 +580,8 @@
         }, SHORT_CODE_CHECK_DEBOUNCE_MS);
     }
 
-    function getShareShortUrlPrefix() {
-        return UrlApi.getShareShortUrlPrefix();
+    function getPublicShortUrlPrefix() {
+        return UrlApi.getPublicShortUrlPrefix();
     }
 
     function formatClicks(value) {
@@ -725,32 +725,12 @@
         return UrlApi.getPublicShortUrl(shortCode);
     }
 
-    function getShareShortUrl(shortCode) {
-        return UrlApi.getShareShortUrl(shortCode);
-    }
-
-    function getPreviewShortUrl(shortCode) {
-        return UrlApi.getBackendShortUrl(shortCode);
-    }
-
     function getUrlOptions(url) {
         const options = [
             {
-                key: "share",
-                label: "Share URL",
-                description: "Default sharing link with destination previews",
-                href: getShareShortUrl(url.shortCode)
-            },
-            {
-                key: "preview",
-                label: "Direct backend URL",
-                description: "Bypasses the custom-domain router",
-                href: getPreviewShortUrl(url.shortCode)
-            },
-            {
-                key: "tinyicp",
-                label: "TinyICP URL",
-                description: "Branded custom-domain short link",
+                key: "short",
+                label: "Short URL",
+                description: "TinyICP shortened link",
                 href: getPublicShortUrl(url.shortCode)
             },
             {
@@ -1237,7 +1217,7 @@
                             </div>
                             <code class="short-link-preview-url">
                                 <span class="short-link-preview-prefix">
-                                    {getShareShortUrlPrefix()}
+                                    {getPublicShortUrlPrefix()}
                                 </span>
                                 {#if shortCodePreviewValue}
                                     <span>{shortCodePreviewValue}</span>
@@ -1324,12 +1304,12 @@
                                         : "Reserved Auto URL"}
                                 </span>
                                 <span class="short-link-preview-source">
-                                    This is the share URL you are about to pay for
+                                    This is the short URL you are about to pay for
                                 </span>
                             </div>
                             <code class="short-link-preview-url">
                                 <span class="short-link-preview-prefix">
-                                    {getShareShortUrlPrefix()}
+                                    {getPublicShortUrlPrefix()}
                                 </span>
                                 <span>{pendingRequest?.previewShortCode}</span>
                             </code>
@@ -1342,9 +1322,9 @@
                         <div class="wallet-status">
                             <div><strong>Long URL:</strong> {pendingRequest?.originalUrl}</div>
                             <div>
-                                <strong>Share URL:</strong>
+                                <strong>Short URL:</strong>
                                 {pendingRequest?.previewShortCode
-                                    ? getShareShortUrl(pendingRequest.previewShortCode)
+                                    ? getPublicShortUrl(pendingRequest.previewShortCode)
                                     : "Preparing preview..."}
                             </div>
                             <div>
@@ -1388,8 +1368,8 @@
                         </p>
                         <div class="wallet-status delete-summary">
                             <div>
-                                <strong>Share URL:</strong>
-                                {getShareShortUrl(deleteCandidate.shortCode)}
+                                <strong>Short URL:</strong>
+                                {getPublicShortUrl(deleteCandidate.shortCode)}
                             </div>
                             <div>
                                 <strong>Destination:</strong> {deleteCandidate.originalUrl}
@@ -1456,7 +1436,7 @@
                                                 class="visit-btn"
                                                 on:click={() =>
                                                     openUrl(
-                                                        getShareShortUrl(url.shortCode),
+                                                        getPublicShortUrl(url.shortCode),
                                                         url.shortCode
                                                     )}
                                             >
@@ -1474,14 +1454,14 @@
 
                                     <div class="url-details">
                                         <a
-                                            href={getShareShortUrl(url.shortCode)}
+                                            href={getPublicShortUrl(url.shortCode)}
                                             target="_blank"
                                             rel="noopener"
                                             class="url-primary-link"
                                             on:click={() =>
                                                 scheduleClickRefresh(url.shortCode)}
                                         >
-                                            {getShareShortUrl(url.shortCode)}
+                                            {getPublicShortUrl(url.shortCode)}
                                         </a>
                                         <div class="url-stats">
                                             <span class={`stat stat-status ${getUrlStatusClass(url)}`}>

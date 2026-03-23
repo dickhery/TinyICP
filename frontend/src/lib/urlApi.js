@@ -349,6 +349,10 @@ export class UrlApi {
     return buildShortLink(getPublicShortLinkOrigin(), shortCode);
   }
 
+  static getPublicShortUrlPrefix() {
+    return buildShortLinkPrefix(getPublicShortLinkOrigin());
+  }
+
   static getShareShortUrl(shortCode) {
     return buildShortLink(getShareShortLinkOrigin(), shortCode);
   }
@@ -358,7 +362,7 @@ export class UrlApi {
   }
 
   static getShortUrl(shortCode) {
-    return this.getShareShortUrl(shortCode);
+    return this.getPublicShortUrl(shortCode);
   }
 
   static getBackendShortUrl(shortCode, raw = false) {
