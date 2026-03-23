@@ -1,0 +1,16 @@
+name = "tinyicp-router"
+main = "worker.js"
+compatibility_date = "2026-03-23"
+
+[vars]
+FRONTEND_ORIGIN = "https://srbli-5iaaa-aaaab-aga5q-cai.icp0.io"
+BACKEND_ORIGIN = "https://swan4-qqaaa-aaaab-aga5a-cai.raw.icp0.io"
+
+[[routes]]
+pattern = "tinyicp.com"
+custom_domain = true
+
+# Optional:
+# [[routes]]
+# pattern = "www.tinyicp.com"
+# custom_domain = true

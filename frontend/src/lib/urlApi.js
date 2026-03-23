@@ -4,6 +4,7 @@ import {
   buildShortLinkPrefix,
   getBackendOrigin,
   getPublicShortLinkOrigin,
+  getShareShortLinkOrigin,
 } from "./urlConfig.js";
 
 const unwrapResult = (result, action) => {
@@ -348,12 +349,16 @@ export class UrlApi {
     return buildShortLink(getPublicShortLinkOrigin(), shortCode);
   }
 
-  static getPublicShortUrlPrefix() {
-    return buildShortLinkPrefix(getPublicShortLinkOrigin());
+  static getShareShortUrl(shortCode) {
+    return buildShortLink(getShareShortLinkOrigin(), shortCode);
+  }
+
+  static getShareShortUrlPrefix() {
+    return buildShortLinkPrefix(getShareShortLinkOrigin());
   }
 
   static getShortUrl(shortCode) {
-    return this.getPublicShortUrl(shortCode);
+    return this.getShareShortUrl(shortCode);
   }
 
   static getBackendShortUrl(shortCode, raw = false) {

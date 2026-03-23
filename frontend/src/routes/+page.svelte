@@ -276,7 +276,7 @@
             await refreshAutoShortCodePreview();
 
             const shortCode = hydratedUrl.shortCode;
-            const fullShortUrl = getPublicShortUrl(shortCode);
+            const fullShortUrl = getShareShortUrl(shortCode);
             showSuccess(
                 `[>] Short URL created with ${formatClicks(hydratedUrl.allowance.remainingClicks)} prepaid clicks: ${fullShortUrl}`
             );
@@ -421,7 +421,7 @@
 
     function getAutoShortCodePreviewMessage() {
         if (autoShortCodePreviewLoading) {
-            return "Reserving the auto-generated short code for your next TinyICP URL...";
+            return "Reserving the auto-generated short code for your next share URL...";
         }
 
         if (autoShortCodePreviewError) {
@@ -432,7 +432,7 @@
             return "This auto-generated short code is reserved for your next purchase.";
         }
 
-        return "Your auto-generated TinyICP URL will appear here before payment.";
+        return "Your auto-generated share URL will appear here before payment.";
     }
 
     function getShortCodePreviewStatusLabel(status, usingCustomShortCode) {
@@ -580,8 +580,8 @@
         }, SHORT_CODE_CHECK_DEBOUNCE_MS);
     }
 
-    function getPublicShortUrlPrefix() {
-        return UrlApi.getPublicShortUrlPrefix();
+    function getShareShortUrlPrefix() {
+        return UrlApi.getShareShortUrlPrefix();
     }
 
     function formatClicks(value) {
@@ -725,6 +725,10 @@
         return UrlApi.getPublicShortUrl(shortCode);
     }
 
+    function getShareShortUrl(shortCode) {
+        return UrlApi.getShareShortUrl(shortCode);
+    }
+
     function getPreviewShortUrl(shortCode) {
         return UrlApi.getBackendShortUrl(shortCode);
     }
@@ -732,15 +736,21 @@
     function getUrlOptions(url) {
         const options = [
             {
+                key: "share",
+                label: "Share URL",
+                description: "Default sharing link with destination previews",
+                href: getShareShortUrl(url.shortCode)
+            },
+            {
                 key: "preview",
-                label: "Preview URL",
-                description: "Longer, allows link previews",
+                label: "Direct backend URL",
+                description: "Bypasses the custom-domain router",
                 href: getPreviewShortUrl(url.shortCode)
             },
             {
                 key: "tinyicp",
                 label: "TinyICP URL",
-                description: "Shorter, no link previews",
+                description: "Branded custom-domain short link",
                 href: getPublicShortUrl(url.shortCode)
             },
             {
@@ -1227,7 +1237,7 @@
                             </div>
                             <code class="short-link-preview-url">
                                 <span class="short-link-preview-prefix">
-                                    {getPublicShortUrlPrefix()}
+                                    {getShareShortUrlPrefix()}
                                 </span>
                                 {#if shortCodePreviewValue}
                                     <span>{shortCodePreviewValue}</span>
@@ -1314,12 +1324,12 @@
                                         : "Reserved Auto URL"}
                                 </span>
                                 <span class="short-link-preview-source">
-                                    This is the TinyICP URL you are about to pay for
+                                    This is the share URL you are about to pay for
                                 </span>
                             </div>
                             <code class="short-link-preview-url">
                                 <span class="short-link-preview-prefix">
-                                    {getPublicShortUrlPrefix()}
+                                    {getShareShortUrlPrefix()}
                                 </span>
                                 <span>{pendingRequest?.previewShortCode}</span>
                             </code>
@@ -1332,9 +1342,9 @@
                         <div class="wallet-status">
                             <div><strong>Long URL:</strong> {pendingRequest?.originalUrl}</div>
                             <div>
-                                <strong>TinyICP URL:</strong>
+                                <strong>Share URL:</strong>
                                 {pendingRequest?.previewShortCode
-                                    ? getPublicShortUrl(pendingRequest.previewShortCode)
+                                    ? getShareShortUrl(pendingRequest.previewShortCode)
                                     : "Preparing preview..."}
                             </div>
                             <div>
@@ -1378,8 +1388,8 @@
                         </p>
                         <div class="wallet-status delete-summary">
                             <div>
-                                <strong>TinyICP URL:</strong>
-                                {getPublicShortUrl(deleteCandidate.shortCode)}
+                                <strong>Share URL:</strong>
+                                {getShareShortUrl(deleteCandidate.shortCode)}
                             </div>
                             <div>
                                 <strong>Destination:</strong> {deleteCandidate.originalUrl}
@@ -1446,7 +1456,7 @@
                                                 class="visit-btn"
                                                 on:click={() =>
                                                     openUrl(
-                                                        getPublicShortUrl(url.shortCode),
+                                                        getShareShortUrl(url.shortCode),
                                                         url.shortCode
                                                     )}
                                             >
@@ -1464,14 +1474,14 @@
 
                                     <div class="url-details">
                                         <a
-                                            href={getPublicShortUrl(url.shortCode)}
+                                            href={getShareShortUrl(url.shortCode)}
                                             target="_blank"
                                             rel="noopener"
                                             class="url-primary-link"
                                             on:click={() =>
                                                 scheduleClickRefresh(url.shortCode)}
                                         >
-                                            {getPublicShortUrl(url.shortCode)}
+                                            {getShareShortUrl(url.shortCode)}
                                         </a>
                                         <div class="url-stats">
                                             <span class={`stat stat-status ${getUrlStatusClass(url)}`}>

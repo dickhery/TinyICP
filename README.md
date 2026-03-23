@@ -84,27 +84,32 @@ The frontend asset CSP also explicitly allows `http://*.localhost:*` in `connect
 
 ## Custom Domain Short Links
 
-The app now defaults to using:
+TinyICP now distinguishes between:
+
+-   a **branded URL origin** for short custom-domain links
+-   a **share URL origin** for the default link the dashboard surfaces for copying and opening
+
+The branded origin still defaults to:
 
 ```text
 https://tinyicp.com
 ```
 
-for generated short links in deployed environments.
-
-If you ever want to override that, set:
+and can be overridden with:
 
 ```bash
 VITE_PUBLIC_SHORTLINK_ORIGIN=https://tinyicp.com
 ```
 
-With that in place, the UI will generate and copy short links like:
+The share origin can be set separately:
 
-```text
-https://tinyicp.com/s/IC-Paywall
+```bash
+VITE_SHARE_SHORTLINK_ORIGIN=https://tinyicp.com
 ```
 
-while still using the backend canister origin for direct stats requests and the frontend fallback redirect route.
+If `VITE_SHARE_SHORTLINK_ORIGIN` is not set, the app now falls back to the **backend canister origin** for sharing so copied links keep their destination previews even before the custom domain is routed correctly.
+
+Once your custom domain router is live, set both origins to `https://tinyicp.com` and the dashboard will share the branded short link by default.
 
 ### Important deployment requirement for link previews
 
@@ -115,13 +120,21 @@ If `tinyicp.com` points only to the frontend asset canister:
 - human visitors still get redirected because the SPA route loads in the browser and forwards them
 - social crawlers do **not** get the Open Graph / Twitter metadata, because they only see the static frontend HTML shell
 
-To make previews work on the custom domain, you need one of these deployment setups:
+This repository now includes a ready-to-deploy Cloudflare Worker router in [`cloudflare/worker.js`](./cloudflare/worker.js) with an example Wrangler config in [`cloudflare/wrangler.toml.example`](./cloudflare/wrangler.toml.example). The worker:
 
-1. Route `tinyicp.com/s/*` to the backend canister and the rest of the site to the frontend canister via a reverse proxy/CDN/worker.
-2. Move the whole site behind a single canister/runtime that can serve both the app shell and the backend-generated redirect HTML.
-3. Point the short-link domain itself at the backend canister and serve the app from a different host.
+1. sends `tinyicp.com/s/*` requests to the backend canister
+2. sends all other requests to the frontend asset canister
+3. forwards `x-forwarded-host` and `x-forwarded-proto` so the backend can keep `og:url`, `twitter:url`, and canonical URLs on `tinyicp.com`
 
-The backend redirect page already emits the correct preview tags and uses the incoming `Host` header to build canonical `og:url` / `twitter:url` values, so once `/s/*` reaches the backend canister the custom-domain previews will work.
+To use it:
+
+1. Deploy the frontend and backend canisters as usual.
+2. Copy `cloudflare/wrangler.toml.example` to `cloudflare/wrangler.toml`.
+3. Set `FRONTEND_ORIGIN` to your frontend canister URL and `BACKEND_ORIGIN` to your backend canister URL.
+4. Deploy the worker to `tinyicp.com`.
+5. Set `VITE_SHARE_SHORTLINK_ORIGIN=https://tinyicp.com` in the frontend build once the worker is handling the custom domain.
+
+With that routing in place, the backend redirect page will emit the correct preview tags for the destination site while keeping the shared URL on the TinyICP custom domain.
 
 ## Getting Started
 

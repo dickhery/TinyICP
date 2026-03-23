@@ -356,18 +356,54 @@ module {
       |> Text.replace(_, #text("\r"), "\\r");
     };
 
-    func buildShortUrl(routeContext : RouteContext.RouteContext, shortCode : Text) : Text {
-      let host = switch (routeContext.getHeader("host")) {
-        case (?value) {
-          if (value != "") {
-            value;
-          } else {
-            defaultHost;
+    func normalizedHeaderValue(value : Text) : Text {
+      let segments = Text.split(value, #char(',')) |> Iter.toArray(_);
+      if (segments.size() == 0) {
+        "";
+      } else {
+        Text.trim(segments[0], #char(' '));
+      };
+    };
+
+    func firstNonEmptyHeader(
+      routeContext : RouteContext.RouteContext,
+      headerNames : [Text],
+    ) : ?Text {
+      for (headerName in headerNames.vals()) {
+        switch (routeContext.getHeader(headerName)) {
+          case (?value) {
+            let normalized = normalizedHeaderValue(value);
+            if (normalized != "") {
+              return ?normalized;
+            };
           };
+          case null {};
         };
+      };
+
+      null;
+    };
+
+    func buildShortUrl(routeContext : RouteContext.RouteContext, shortCode : Text) : Text {
+      let host = switch (
+        firstNonEmptyHeader(routeContext, ["x-tinyicp-forwarded-host", "x-original-host", "host"])
+      ) {
+        case (?value) value;
         case null defaultHost;
       };
-      let scheme = if (hostUsesHttp(host)) "http" else "https";
+      let scheme = switch (
+        firstNonEmptyHeader(routeContext, ["x-tinyicp-forwarded-proto", "x-original-proto"])
+      ) {
+        case (?"http") "http";
+        case (?"https") "https";
+        case _ {
+          if (hostUsesHttp(host)) {
+            "http";
+          } else {
+            "https";
+          };
+        };
+      };
       scheme # "://" # host # "/s/" # shortCode;
     };
 

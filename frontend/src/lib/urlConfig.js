@@ -70,6 +70,17 @@ export const getPublicShortLinkOrigin = () => {
   );
 };
 
+export const getShareShortLinkOrigin = () => {
+  if (building || process.env.NODE_ENV === "test") {
+    return "/";
+  }
+
+  return (
+    normalizeOrigin(import.meta.env.VITE_SHARE_SHORTLINK_ORIGIN) ??
+    getBackendOrigin(false)
+  );
+};
+
 export const buildShortLink = (origin, shortCode) => {
   const path = `/s/${encodeURIComponent(shortCode)}`;
 
