@@ -17,7 +17,7 @@ import Nat "mo:core@1/Nat";
 import Nat64 "mo:core@1/Nat64";
 import Buffer "mo:base/Buffer";
 import Error "mo:base/Error";
-import ExperimentalCycles "mo:base/ExperimentalCycles";
+import Prim "mo:⛔";
 
 shared ({ caller = initializer }) persistent actor class Actor() = self {
   type HeaderField = (Text, Text);
@@ -61,7 +61,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     urlReservationStableData,
   );
   transient let canisterPrincipal = Principal.fromActor(self);
-  transient var urlRouter = UrlRouter.Router(urlStore, Principal.toText(canisterPrincipal) # ".icp0.io");
+  transient var urlRouter = UrlRouter.Router(urlStore, "tinyicp.com");
   transient let shortCodeReservationDurationNanos : Int = 10 * 60 * 1_000_000_000;
 
   system func preupgrade() {
@@ -76,7 +76,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
       urlBillingStableData,
       urlReservationStableData,
     );
-    urlRouter := UrlRouter.Router(urlStore, Principal.toText(canisterPrincipal) # ".icp0.io");
+    urlRouter := UrlRouter.Router(urlStore, "tinyicp.com");
     routerConfig := buildRouterConfig();
     app := buildApp(routerConfig);
   };
@@ -350,7 +350,7 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
 
     let request : HttpRequestArgs = {
       url = requestUrl;
-      max_response_bytes = ?250_000;
+      max_response_bytes = ?100_000;
       headers = [
         (
           "User-Agent",
@@ -368,11 +368,8 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
       };
     };
 
-    let cycles = 230_000_000_000;
-    ExperimentalCycles.add(cycles);
-
     try {
-      let response = await ic.http_request(request);
+      let response = await (with cycles = httpOutcallCycles(request)) ic.http_request(request);
       if (response.status < 200 or response.status >= 400) {
         Debug.print("Preview metadata fetch returned status " # Nat.toText(response.status) # " for " # requestUrl);
         return null;
@@ -1069,14 +1066,115 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
     null;
   };
 
-  func buildShortLinkHeadUpgradeResponse() : Liminal.RawQueryHttpResponse {
-    {
-      status_code = 200;
-      headers = [];
-      body = Blob.fromArray([]);
-      streaming_strategy = null;
-      upgrade = ?true;
+  func httpOutcallCycles(request : HttpRequestArgs) : Nat {
+    var requestSize : Nat = request.url.size();
+    for (header in request.headers.vals()) {
+      requestSize += header.0.size() + header.1.size();
     };
+    switch (request.body) {
+      case (?body) {
+        requestSize += body.size();
+      };
+      case null {};
+    };
+    switch (request.transform) {
+      case (?transform) {
+        requestSize += 24;
+        requestSize += transform.context.size();
+      };
+      case null {};
+    };
+
+    let maxResponseBytes : Nat64 = switch (request.max_response_bytes) {
+      case (?bytes) bytes;
+      case null 2_000_000;
+    };
+
+    Prim.costHttpRequest(Nat64.fromNat(requestSize), maxResponseBytes);
+  };
+
+  func headerValue(headers : [(Text, Text)], name : Text) : ?Text {
+    let wanted = toLowerAscii(name);
+    for ((headerName, value) in headers.vals()) {
+      if (toLowerAscii(headerName) == wanted and value != "") {
+        return ?value;
+      };
+    };
+    null;
+  };
+
+  func isLinkPreviewUserAgent(userAgent : ?Text) : Bool {
+    let ua = toLowerAscii(
+      switch (userAgent) {
+        case (?value) value;
+        case null "";
+      }
+    );
+    if (ua == "") {
+      return false;
+    };
+
+    let needles : [Text] = [
+      "facebookexternalhit",
+      "facebot",
+      "twitterbot",
+      "linkedinbot",
+      "slackbot",
+      "discordbot",
+      "whatsapp",
+      "telegrambot",
+      "skypeuripreview",
+      "pinterest",
+      "redditbot",
+      "applebot",
+      "iframely",
+      "embedly",
+      "googlebot",
+      "bingbot",
+      "duckduckbot",
+      "yandex",
+      "baiduspider",
+      "vkshare",
+      "snapchat",
+      "notion",
+      "microlink",
+      "opengraphio",
+      "preview",
+    ];
+
+    for (needle in needles.vals()) {
+      if (Text.contains(ua, #text(needle))) {
+        return true;
+      };
+    };
+
+    false;
+  };
+
+  func toQueryResponse(
+    statusCode : Nat16,
+    headers : [(Text, Text)],
+    body : Blob,
+  ) : Liminal.RawQueryHttpResponse {
+    {
+      status_code = statusCode;
+      headers = headers;
+      body = body;
+      streaming_strategy = null;
+      upgrade = ?false;
+    };
+  };
+
+  func buildShortLinkHeadQueryResponse(statusCode : Nat16) : Liminal.RawQueryHttpResponse {
+    toQueryResponse(
+      statusCode,
+      [
+        ("Content-Type", "text/html; charset=utf-8"),
+        ("Cache-Control", "no-store, max-age=0"),
+        ("X-Robots-Tag", "noindex, noarchive"),
+      ],
+      Blob.fromArray([]),
+    );
   };
 
   func buildShortLinkHeadResponse(statusCode : Nat16) : Liminal.RawUpdateHttpResponse {
@@ -1125,8 +1223,21 @@ shared ({ caller = initializer }) persistent actor class Actor() = self {
   transient var app : Liminal.App = buildApp(routerConfig);
 
   public query func http_request(request : Liminal.RawQueryHttpRequest) : async Liminal.RawQueryHttpResponse {
-    if (toLowerAscii(request.method) == "head" and shortCodeFromRequestUrl(request.url) != null) {
-      return buildShortLinkHeadUpgradeResponse();
+    let method = toLowerAscii(request.method);
+
+    switch (shortCodeFromRequestUrl(request.url)) {
+      case (?shortCode) {
+        if (method == "head") {
+          let exists = urlStore.getUrlByShortCode(shortCode) != null;
+          return buildShortLinkHeadQueryResponse(if (exists) 200 else 404);
+        };
+
+        if (method == "get" and isLinkPreviewUserAgent(headerValue(request.headers, "user-agent"))) {
+          let preview = urlRouter.preview(request.headers, shortCode);
+          return toQueryResponse(preview.status_code, preview.headers, preview.body);
+        };
+      };
+      case null {};
     };
 
     app.http_request(request);

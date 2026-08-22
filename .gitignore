@@ -7,11 +7,15 @@
 .DS_Store
 **/.DS_Store
 
-# dfx temporary files
-.dfx/
+# icp-cli ephemeral cache (do not ignore .icp/data — mainnet IDs live there)
+.icp/cache/
+
+# mops package cache
+.mops/
 
 # generated files
 **/declarations/
+**/src/bindings/
 
 # rust
 target/
@@ -20,6 +24,7 @@ target/
 node_modules/
 dist/
 .svelte-kit/
+frontend/vite.config.js.timestamp-*.mjs
 
 # environment variables
 .env

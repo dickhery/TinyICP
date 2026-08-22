@@ -55,7 +55,7 @@ const normalizeUrl = (url) => ({
   allowance: normalizeAllowance(url.allowance),
 });
 
-const toOptional = (value) => (hasText(value) ? [value.trim()] : []);
+const toOptional = (value) => (hasText(value) ? value.trim() : null);
 
 const toActorMetadata = (metadata) => ({
   title: toOptional(metadata?.title),
@@ -233,7 +233,7 @@ export class UrlApi {
     const result = await actor.create_my_url({
       originalUrl,
       purchasedClicks: BigInt(purchasedClicks),
-      customSlug: customSlug ? [customSlug] : [],
+      customSlug: customSlug || null,
     });
 
     return normalizeUrl(unwrapResult(result, "create short URL"));
@@ -280,7 +280,7 @@ export class UrlApi {
   static async reserveShortCodePreview(shortCode = null) {
     const actor = await getBackendActor();
     return unwrapResult(
-      await actor.reserve_short_code_preview(shortCode ? [shortCode.trim()] : []),
+      await actor.reserve_short_code_preview(shortCode ? shortCode.trim() : null),
       "reserve short code preview",
     );
   }

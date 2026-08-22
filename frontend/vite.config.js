@@ -1,12 +1,41 @@
-import { fileURLToPath, URL } from 'url';
-import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
-import environment from 'vite-plugin-environment';
-import dotenv from 'dotenv';
+import { sveltekit } from "@sveltejs/kit/vite";
+import { defineConfig } from "vite";
+import { execSync } from "child_process";
+import { icpBindgen } from "@icp-sdk/bindgen/plugins/vite";
 
-dotenv.config({ path: '../../.env' });
+const environment = process.env.ICP_ENVIRONMENT || "local";
+const CANISTER_NAMES = ["backend"];
 
-export default defineConfig({
+function getCanisterId(name) {
+  return execSync(`icp canister status ${name} -e ${environment} --id-only`, {
+    encoding: "utf-8",
+    stdio: "pipe",
+  }).trim();
+}
+
+function getDevServerConfig() {
+  const networkStatus = JSON.parse(
+    execSync(`icp network status -e ${environment} --json`, {
+      encoding: "utf-8",
+    }),
+  );
+  const canisterParams = CANISTER_NAMES.map(
+    (name) => `PUBLIC_CANISTER_ID:${name}=${getCanisterId(name)}`,
+  ).join("&");
+
+  return {
+    headers: {
+      "Set-Cookie": `ic_env=${encodeURIComponent(
+        `${canisterParams}&ic_root_key=${networkStatus.root_key}`,
+      )}; SameSite=Lax;`,
+    },
+    proxy: {
+      "/api": { target: networkStatus.api_url, changeOrigin: true },
+    },
+  };
+}
+
+export default defineConfig(({ command }) => ({
   build: {
     emptyOutDir: true,
   },
@@ -17,28 +46,12 @@ export default defineConfig({
       },
     },
   },
-  server: {
-    proxy: {
-      "/api": {
-        target: "http://127.0.0.1:4943",
-        changeOrigin: true,
-      },
-    },
-  },
   plugins: [
     sveltekit(),
-    environment("all", { prefix: "CANISTER_" }),
-    environment("all", { prefix: "DFX_" }),
+    icpBindgen({
+      didFile: "../backend/backend.did",
+      outDir: "./src/bindings",
+    }),
   ],
-  resolve: {
-    alias: [
-      {
-        find: "declarations",
-        replacement: fileURLToPath(
-          new URL("../src/declarations", import.meta.url)
-        ),
-      },
-    ],
-    dedupe: ['@dfinity/agent'],
-  },
-});
+  ...(command === "serve" ? { server: getDevServerConfig() } : {}),
+}));

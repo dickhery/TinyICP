@@ -1,0 +1,159 @@
+type WalletInfo = 
+ record {
+   balanceE8s: nat;
+   canisterPrincipal: principal;
+   clickBundlePriceE8s: nat;
+   clickBundleSize: nat;
+   depositAccountId: text;
+   minimumPurchaseClicks: nat;
+   minimumPurchaseCostE8s: nat;
+   paymentTargetAccountId: text;
+   subaccountHex: text;
+   transferFeeE8s: nat;
+ };
+type UrlView = 
+ record {
+   allowance: UrlAllowanceView;
+   clicks: nat;
+   createdAt: int;
+   id: nat;
+   metadata: opt UrlMetadata;
+   originalUrl: text;
+   shortCode: text;
+ };
+type UrlMetadata = 
+ record {
+   canonicalUrl: opt text;
+   description: opt text;
+   imageUrl: opt text;
+   siteName: opt text;
+   title: opt text;
+ };
+type UrlAllowanceView = 
+ record {
+   isActive: bool;
+   remainingClicks: nat;
+   totalPurchasedClicks: nat;
+ };
+type TransformArgs = 
+ record {
+   context: blob;
+   response: HttpResponsePayload;
+ };
+type StreamingToken = blob;
+type StreamingStrategy = variant {Callback: CallbackStreamingStrategy;};
+type StreamingCallbackResponse = 
+ record {
+   body: blob;
+   token: opt StreamingToken;
+ };
+type StreamingCallback = func (StreamingToken) ->
+                          (StreamingCallbackResponse) query;
+type Result_4 = 
+ variant {
+   err: text;
+   ok: bool;
+ };
+type Result_3 = 
+ variant {
+   err: text;
+   ok: nat;
+ };
+type Result_2 = 
+ variant {
+   err: text;
+   ok: text;
+ };
+type Result_1 = 
+ variant {
+   err: text;
+   ok: UrlView;
+ };
+type Result = 
+ variant {
+   err: text;
+   ok;
+ };
+type RawUpdateHttpResponse = 
+ record {
+   body: blob;
+   headers: vec Header;
+   status_code: nat16;
+   streaming_strategy: opt StreamingStrategy;
+ };
+type RawUpdateHttpRequest = 
+ record {
+   body: blob;
+   headers: vec Header;
+   method: text;
+   url: text;
+ };
+type RawQueryHttpResponse = 
+ record {
+   body: blob;
+   headers: vec Header;
+   status_code: nat16;
+   streaming_strategy: opt StreamingStrategy;
+   upgrade: opt bool;
+ };
+type RawQueryHttpRequest = 
+ record {
+   body: blob;
+   certificate_version: opt nat16;
+   headers: vec Header;
+   method: text;
+   url: text;
+ };
+type HttpResponsePayload = 
+ record {
+   body: blob;
+   headers: vec HeaderField;
+   status: nat;
+ };
+type HeaderField = 
+ record {
+   text;
+   text;
+ };
+type Header = 
+ record {
+   text;
+   text;
+ };
+type CreateRequest = 
+ record {
+   customSlug: opt text;
+   originalUrl: text;
+   purchasedClicks: nat;
+ };
+type CallbackStreamingStrategy = 
+ record {
+   callback: StreamingCallback;
+   token: StreamingToken;
+ };
+type Actor = 
+ service {
+   check_short_code_availability: (shortCode: text) -> (Result_4) query;
+   create_my_url: (request: CreateRequest) -> (Result_1);
+   delete_my_url: (id: nat) -> (Result);
+   get_public_url: (shortCode: text) -> (opt UrlView) query;
+   get_wallet_info: () -> (WalletInfo);
+   http_request: (request: RawQueryHttpRequest) ->
+    (RawQueryHttpResponse) query;
+   http_request_update: (request: RawUpdateHttpRequest) ->
+    (RawUpdateHttpResponse);
+   list_my_urls: () -> (vec UrlView) query;
+   record_short_link_visit: (shortCode: text) -> (Result_1);
+   refresh_all_missing_metadata: () -> (Result_3);
+   refresh_my_url_metadata: (id: nat) -> (Result_1);
+   reserve_auto_short_code_preview: () -> (Result_2);
+   reserve_short_code_preview: (shortCode: opt text) -> (Result_2);
+   save_my_url_metadata: (id: nat, metadata: UrlMetadata) -> (Result_1);
+   top_up_my_url: (id: nat, purchasedClicks: nat) -> (Result_1);
+   transformPreviewMetadata: (args: TransformArgs) ->
+    (HttpResponsePayload) query;
+   whoami: () -> (principal) query;
+   withdraw_from_wallet: (destinationAccountId: text, amountE8s: nat) ->
+    (Result);
+ };
+service : () -> Actor

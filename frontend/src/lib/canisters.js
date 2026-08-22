@@ -1,31 +1,19 @@
-import { building } from '$app/environment';
+import { building } from "$app/environment";
+import { safeGetCanisterEnv } from "@icp-sdk/core/agent/canister-env";
 
-const readCanisterId = () => {
-  const configuredCanisterId =
-    process.env.CANISTER_ID_BACKEND ??
-    process.env.CANISTER_ID ??
-    process.env.BACKEND_CANISTER_ID;
+export const getBackendCanisterId = () => {
+  const canisterEnv = safeGetCanisterEnv();
+  const canisterId = canisterEnv?.["PUBLIC_CANISTER_ID:backend"];
 
-  if (configuredCanisterId) {
-    return configuredCanisterId;
+  if (canisterId) {
+    return canisterId;
   }
 
-  if (building || process.env.NODE_ENV === 'test') {
-    return 'backend';
+  if (building || process.env.NODE_ENV === "test") {
+    return "backend";
   }
 
   throw new Error(
-    'Missing backend canister id. Run `dfx deploy` (or `dfx generate backend`) so DFX can populate the CANISTER_ID_BACKEND environment variable.'
+    "Missing backend canister id. Deploy with `icp deploy` so the frontend can read PUBLIC_CANISTER_ID:backend from the ic_env cookie.",
   );
 };
-
-export const canisterId = readCanisterId();
-
-export const backend = new Proxy(
-  {},
-  {
-    get() {
-      throw new Error('This app talks to the backend over HTTP. Use UrlApi instead of a generated actor.');
-    },
-  }
-);

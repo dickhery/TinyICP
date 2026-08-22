@@ -1,7 +1,6 @@
 import { building } from "$app/environment";
-import { canisterId } from "./canisters.js";
+import { getBackendCanisterId } from "./canisters.js";
 
-const DEFAULT_LOCAL_PORT = "4943";
 const DEFAULT_PUBLIC_SHORTLINK_ORIGIN = "https://tinyicp.com";
 
 export const isLocalHost = (hostname) =>
@@ -28,14 +27,14 @@ const normalizeOrigin = (value) => {
 
 export const getHostEnvironment = () => {
   if (typeof window === "undefined") {
-    return { kind: "local", port: DEFAULT_LOCAL_PORT };
+    return { kind: "local", port: "" };
   }
 
   const { hostname, port } = window.location;
 
   return {
     kind: isLocalHost(hostname) ? "local" : "ic",
-    port: port || DEFAULT_LOCAL_PORT,
+    port,
   };
 };
 
@@ -45,10 +44,12 @@ export const getBackendOrigin = (raw = true) => {
   }
 
   const { kind, port } = getHostEnvironment();
+  const canisterId = getBackendCanisterId();
   const canisterIdAndRaw = raw ? `${canisterId}.raw` : canisterId;
 
   if (kind === "local") {
-    return `http://${canisterIdAndRaw}.localhost:${port}`;
+    const localPort = port || "8000";
+    return `http://${canisterIdAndRaw}.localhost:${localPort}`;
   }
 
   return `https://${canisterIdAndRaw}.icp0.io`;
@@ -77,7 +78,7 @@ export const getShareShortLinkOrigin = () => {
 
   return (
     normalizeOrigin(import.meta.env.VITE_SHARE_SHORTLINK_ORIGIN) ??
-    getBackendOrigin(false)
+    getPublicShortLinkOrigin()
   );
 };
 

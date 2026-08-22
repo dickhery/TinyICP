@@ -1,0 +1,17 @@
+canisters:
+  - name: backend
+    recipe:
+      type: "@dfinity/motoko@v5.1.0"
+    settings:
+      # Keep ~90 days of idle cycles in reserve so prepaid URL state is not
+      # deleted after a short funding gap. This does not increase burn rate.
+      freezing_threshold: 7776000
+
+  - name: frontend
+    recipe:
+      type: "@dfinity/static-site@v0.3.3"
+      configuration:
+        dir: frontend/dist
+        build:
+          - npm ci
+          - npm run build

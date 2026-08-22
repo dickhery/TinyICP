@@ -1,0 +1,14 @@
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://icp-api.io https://icp0.io https://*.icp0.io https://icp.net https://*.icp.net https://ic0.app https://*.ic0.app https://id.ai http://localhost:* http://*.localhost:*; frame-src 'self' https://thowo-iqaaa-aaaab-ac3wa-cai.icp0.io; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests
+  Cache-Control: public, max-age=0, must-revalidate
+
+/_app/immutable/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/.well-known/ii-alternative-origins
+  Content-Type: application/json
+  Access-Control-Allow-Origin: *

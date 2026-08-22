@@ -1,13 +1,13 @@
-import { AuthClient } from '@dfinity/auth-client';
-import { building } from '$app/environment';
+import { AuthClient } from "@icp-sdk/auth/client";
+import { building } from "$app/environment";
 
-const MAINNET_II_URL = 'https://id.ai';
+const MAINNET_II_URL = "https://id.ai/authorize";
+const FRONTEND_CANISTER_ORIGIN = "https://srbli-5iaaa-aaaab-aga5q-cai.icp0.io";
 
-let authClientPromise;
+let authClient;
 
-
-export const getIdentityProvider = () => {
-  if (building || typeof window === 'undefined') {
+const getIdentityProvider = () => {
+  if (building || typeof window === "undefined") {
     return MAINNET_II_URL;
   }
 
@@ -19,41 +19,31 @@ export const getIdentityProvider = () => {
   return MAINNET_II_URL;
 };
 
-export const getAuthClient = async () => {
-  if (!authClientPromise) {
-    authClientPromise = AuthClient.create();
+export const getAuthClient = () => {
+  if (!authClient) {
+    authClient = new AuthClient({
+      identityProvider: getIdentityProvider(),
+      derivationOrigin: FRONTEND_CANISTER_ORIGIN,
+    });
   }
 
-  return authClientPromise;
+  return authClient;
 };
 
-export const isAuthenticated = async () => {
-  const client = await getAuthClient();
-  return client.isAuthenticated();
-};
+export const isAuthenticated = async () => getAuthClient().isAuthenticated();
 
-export const getIdentity = async () => {
-  const client = await getAuthClient();
-  return client.getIdentity();
-};
+export const getIdentity = async () => getAuthClient().getIdentity();
 
 export const login = async () => {
-  const client = await getAuthClient();
-
-  return new Promise((resolve, reject) => {
-    client.login({
-      identityProvider: getIdentityProvider(),
-      derivationOrigin: "https://srbli-5iaaa-aaaab-aga5q-cai.icp0.io",
-      onSuccess: resolve,
-      onError: reject,
-      windowOpenerFeatures: 'toolbar=0,location=0,menubar=0,width=520,height=705,left=100,top=100'
-    });
+  return getAuthClient().signIn({
+    maxTimeToLive: BigInt(8) * BigInt(3_600_000_000_000),
+    windowOpenerFeatures:
+      "toolbar=0,location=0,menubar=0,width=520,height=705,left=100,top=100",
   });
 };
 
 export const logout = async () => {
-  const client = await getAuthClient();
-  await client.logout();
+  await getAuthClient().signOut();
 };
 
 export const getPrincipalText = async () => {

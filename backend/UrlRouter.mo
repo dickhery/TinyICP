@@ -12,6 +12,7 @@ import UrlKit "mo:url-kit@3";
 import Runtime "mo:core@1/Runtime";
 import Principal "mo:core@1/Principal";
 import Pricing "Pricing";
+import Char "mo:core@1/Char";
 
 module {
 
@@ -61,6 +62,36 @@ module {
               headers = buildRedirectHeaders();
             }),
           );
+        };
+      };
+    };
+
+    public func preview(headers : [(Text, Text)], shortCode : Text) : {
+      status_code : Nat16;
+      headers : [(Text, Text)];
+      body : Blob;
+    } {
+      switch (store.getUrlByShortCode(shortCode)) {
+        case (null) {
+          {
+            status_code = 404;
+            headers = buildRedirectHeaders();
+            body = Text.encodeUtf8("Short URL not found");
+          };
+        };
+        case (?url) {
+          let shortUrl = buildShortUrlFromHeaders(headers, shortCode);
+          let view = store.toView(url);
+          let html = if (view.allowance.isActive) {
+            generateRedirectHtml(shortUrl, shortCode, url.originalUrl, url.metadata);
+          } else {
+            generateInactiveHtml(shortUrl, shortCode, view);
+          };
+          {
+            status_code = 200;
+            headers = buildRedirectHeaders();
+            body = Text.encodeUtf8(html);
+          };
         };
       };
     };
@@ -405,6 +436,61 @@ module {
         };
       };
       scheme # "://" # host # "/s/" # shortCode;
+    };
+
+    func buildShortUrlFromHeaders(headers : [(Text, Text)], shortCode : Text) : Text {
+      let host = switch (
+        firstNonEmptyHeaderFromList(headers, ["x-tinyicp-forwarded-host", "x-original-host", "host"])
+      ) {
+        case (?value) value;
+        case null defaultHost;
+      };
+      let scheme = switch (
+        firstNonEmptyHeaderFromList(headers, ["x-tinyicp-forwarded-proto", "x-original-proto"])
+      ) {
+        case (?"http") "http";
+        case (?"https") "https";
+        case _ {
+          if (hostUsesHttp(host)) {
+            "http";
+          } else {
+            "https";
+          };
+        };
+      };
+      scheme # "://" # host # "/s/" # shortCode;
+    };
+
+    func firstNonEmptyHeaderFromList(
+      headers : [(Text, Text)],
+      headerNames : [Text],
+    ) : ?Text {
+      for (headerName in headerNames.vals()) {
+        let wanted = toLowerAscii(headerName);
+        for ((name, value) in headers.vals()) {
+          if (toLowerAscii(name) == wanted) {
+            let normalized = normalizedHeaderValue(value);
+            if (normalized != "") {
+              return ?normalized;
+            };
+          };
+        };
+      };
+
+      null;
+    };
+
+    func toLowerAscii(value : Text) : Text {
+      var result = "";
+      for (char in value.chars()) {
+        let code = Char.toNat32(char);
+        if (code >= 65 and code <= 90) {
+          result := result # Text.fromChar(Char.fromNat32(code + 32));
+        } else {
+          result := result # Text.fromChar(char);
+        };
+      };
+      result;
     };
 
     func hostUsesHttp(host : Text) : Bool {
