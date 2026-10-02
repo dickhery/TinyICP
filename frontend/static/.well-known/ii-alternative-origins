@@ -1,3 +1,7 @@
 {
-  "alternativeOrigins": ["https://tinyicp.com"]
+  "alternativeOrigins": [
+    "https://tinyicp.com",
+    "https://o5wsa-gaaaa-aaaaa-qhq3a-cai.icp0.io",
+    "https://o5wsa-gaaaa-aaaaa-qhq3a-cai.icp.net"
+  ]
 }
